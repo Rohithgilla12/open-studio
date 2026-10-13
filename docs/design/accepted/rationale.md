@@ -293,12 +293,53 @@ Measured on 2026-10-13 on the same M2 Max, macOS 27.0.1, from Ghostty with all t
 
 **Found while verifying.** Posting synthetic events from a separate process reaches a session tap, but only while the tap is up: an earlier run that started the poster from a separate shell command missed the take entirely, which looked like a dead tap until a probe showed same-process posts arriving on both a secondary thread and the main thread. The scratch tool now spawns `osrec` itself.
 
+### D4: integration
+
+Measured on 2026-10-13 on the same M2 Max, macOS 27.0.1, from Ghostty. This is the first time Timeline loaded a real recording. The recordings are scratch artifacts, not committed.
+
+**Added: Timeline verification in `osrec inspect`.** It is a thin shell over the public Timeline API.
+
+- `--timeline` loads the take through `SourceRecording.load`, then prints its buttons and the `AutoZoom.track(for:)` segments.
+- `--check-determinism` evaluates `frame(at:)` at every frame of the manifest's frame rate in four orders: forward, reversed, shuffled with a fixed seed, and from a `TaskGroup`. It compares the bit patterns of every `Double`, and exits 1 on any difference.
+- `--frames <start-ms>:<end-ms>:<step-ms>` prints the camera scale, centre, and viewport, and the cursor position, opacity, and pressed state per sample.
+
+Both flags imply `--timeline`, so the verification command under Usage works as written.
+
+**Method.** A scratch tool spawns `osrec record` and takes its directory line as t = 0. It posts moves at 50 Hz on a circle of radius 8 pt, and left clicks with click state 1. Before each post it hit-tests the point with `NSWindow.windowNumber(at:belowWindowWithWindowNumber:)` and looks the window up with `CGWindowListCopyWindowInfo`. Only Finder at the desktop-icon level passes. A layer filter over the window list is not enough, because Notification Centre keeps a click-through window over the whole display at layer 21. Every point fails a layer test, but a click still reaches the desktop. A script computes the expected segments from the `down` and `up` lines of `events.ndjson` with the designed rule, without Timeline. The rule is [t − 300, t + 2500] ms, start ≥ 1 ms, end ≤ duration − 800 ms, no clicks in the final 1000 ms, and a merge when the gap is ≤ 2500 ms.
+
+| | Take 1 (8 s) | Take 2 (10 s) |
+|---|---|---|
+| Event lines | 338: 330 move, 3 down, 3 up, 1 state, 1 cursorImage | 413: 405 move, 3 down, 3 up, 1 state, 1 cursorImage |
+| Click 1 down/up (ms), position (px) | 1028.448 / 1088.708, (60, 240) | 1019.731 / 1085.696, (100, 240) |
+| Click 2 down/up (ms), position (px) | 2026.650 / 2090.044, (60, 300) | 2016.373 / 2078.906, (100, 300) |
+| Click 3 down/up (ms), position (px) | 6025.959 / 6091.011, (100, 1960) | 8019.474 / 8084.472, (3380, 1960) |
+| Expected segments (ms) | [728.448, 7200.000] | [719.731, 4578.906], [7719.474, 9200.000] |
+| Actual segments (ms) | [728.448, 7200.000], scale 2 | [719.731, 4578.906], [7719.474, 9200.000], scale 2 |
+| Cursor error at the 6 button events (px) | 0.86, 0.14, 1.02, 0.10, 1.00, 0.14 | 0.94, 0.14, 1.32, 0.10, 0.99, 0.10 |
+| Determinism | 481 frames at 60 fps, bit-identical in all four orders, 478 distinct | 601 frames, bit-identical, 599 distinct |
+| Clock check, recorded minus posted | 330 of 330 matched, p50 0.043 ms, p95 0.085 ms | 405 of 405 matched, p50 0.049 ms, p95 0.096 ms |
+
+Every segment matches its expected window to the microsecond. `isPressed` is true at every down and false at every up.
+
+**Take 1 merges, as the rule says.** It follows the plan as briefed: two clicks 1 s apart, a 4 s pause, then a far click. The gap is measured from window to window, not from click to click. Click 2's up window ends at 4590.044 ms and click 3's down window starts at 5725.959 ms. That gap is 1135.9 ms, which is within 2500 ms. A new segment needs the next down more than 5.3 s (300 + 2500 + 2500 ms) after the previous up. Take 2 waits 5.94 s and gets two segments, with a gap of 3140.6 ms.
+
+**Scale.** Inside a segment the zoom-in overshoots to 2.21 at the first up, then settles to 2.0000 (take 2: 2.0005 at 2649 ms, 2.0000 at 4569 ms). Outside, it is 1.0000 before the first segment (520 ms) and 320 ms after a zoom-out starts (4900 ms in take 2).
+
+**Centre.** At 2× on a 3456 × 2234 px frame, the reachable centres are x 864 to 2592 and y 558.5 to 1675.5. All the desktop spots were near the screen edges, so each target clamps to the nearest reachable corner. In take 2, the clicks at (100, 240 to 300) move the centre to (864.0, 558.5) by 1720 ms. The centre returns to the frame centre (1728, 1117) between segments. The click at (3380, 1960) moves it to (2590.1, 1674.3) by 9190 ms. In take 1, the pointer jumps to the far spot at about 5.0 s, inside the merged segment, and the centre pans from (864.0, 558.5) to (864.0, 1675.5) by 5400 ms.
+
+**Fixed: the clock check missed fractional moves.** The HID system stores an event's location as Float32 points. The clock check compared the posted `Double` position with the recorded pixel exactly, so only whole-point posts matched: 46 of 330 and 43 of 405. It now rounds the posted point through `Float` first, and matches every move. `osrec` has no test target and `Package.swift` was out of scope, so the two re-run takes are the regression evidence.
+
+**Observed, not changed: the clamped camera spring rebounds.** The camera spring has ζ = 12 / (2√(125 × 1.5)) ≈ 0.44, so it overshoots by about 22% of each step. The clamp hides the overshoot past a limit, but it does not hide the rebound. After take 2's first zoom-out starts at 4578.9 ms, scale holds at 1.0000 from about 4900 to 5200 ms. It then rises to a peak of 1.0467 at 5350 ms and is back at 1.0000 by 5600 ms. A second, smaller rebound (1.0022 at 6100 ms) settles by 6500 ms. The centre rebounds the same way from a frame edge, by 52 px from 1675.5 to 1623.4 at 5800 ms in take 1. The 800 ms end margin also leaves take 2's last frame at scale 1.0446, so the zoom-out has not settled when the take ends. This is the designed spring and clamp, so Timeline is unchanged. See Open questions.
+
+**Found while verifying.** Clicking the wallpaper probably triggers "Click wallpaper to reveal desktop". This is inferred, not confirmed. Before take 1 the desktop hit-test found 96 free spots. Before take 2 it found 3652, as if the windows had moved aside. After take 2 the original layout was back. The per-click hit-test still held, because the tool re-checks each point just before it posts the click.
+
 ## Open questions and risks
 
 - **Resolved: CGEvent timestamp units.** Nanoseconds on `CLOCK_UPTIME_RAW`, measured by D1 and confirmed by D3's clock check. See Implementation reconciliation.
 - **Resolved on macOS 27: crash recovery of the fragmented `.mov`.** It reads to the last whole fragment after `kill -9` (D1) and after `abort()` with the heartbeat frame (D3). It is not yet measured on macOS 15.
 - **Shake and thinning thresholds.** Are the 500 px and 10 px values in screen pixels, as assumed here, or in points? On a 2× display that doubles their effective size.
 - **Default cursor preset.** Should it be Medium (assumed here) or Smooth?
+- **Camera rebound after a clamp.** On a real take, the underdamped camera spring shows a rebound that the clamp cannot hide. Scale rises back to about 1.047 after each zoom-out, and the centre rebounds about 52 px from a frame edge (D4). Does the observed product show the same rebound? If not, options include a critically damped spring for the zoom-out only, or a longer end margin than 800 ms.
 - **Clock for edits.** When trims and speed changes arrive, should springs run in source time, as now, or in output time, so the camera stays continuous across a cut? If output time, `Timeline.init` gains a time map, and the knot design accommodates it.
 - **Distribution.** Will the app be sandboxed for the App Store, or Developer ID only? Listen-only taps and ScreenCaptureKit work in both, but the choice changes entitlements and the library location used by recovery.
 - **Sequoia-style re-consent prompts.** Recurring "allow screen recording" prompts may push towards `SCContentSharingPicker` for display selection. Should the app adopt it now or later?
