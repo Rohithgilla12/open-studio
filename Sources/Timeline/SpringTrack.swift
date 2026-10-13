@@ -183,6 +183,12 @@ extension RandomAccessCollection {
     /// Binary search over a collection sorted by `key`: the index of the last element whose key is
     /// at most `time`, or `startIndex` when every key is greater. The collection must be non-empty.
     func lastIndex(keyedBy key: (Element) -> Double, atOrBefore time: Double) -> Index {
+        let next = firstIndex(keyedBy: key, after: time)
+        return next == startIndex ? startIndex : index(before: next)
+    }
+
+    /// The index of the first element whose key is greater than `time`, or `endIndex`.
+    func firstIndex(keyedBy key: (Element) -> Double, after time: Double) -> Index {
         var low = startIndex
         var high = endIndex
         while low < high {
@@ -193,6 +199,6 @@ extension RandomAccessCollection {
                 high = mid
             }
         }
-        return low == startIndex ? startIndex : index(before: low)
+        return low
     }
 }
