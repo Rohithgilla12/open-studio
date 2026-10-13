@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 internal import RecordingFormat
+import Synchronization
 
 /// A raw input event, before the clock and coordinate conversions.
 struct CapturedInput: Sendable, Equatable {
@@ -64,4 +65,21 @@ struct EventConversion: Sendable, Equatable {
     func state(_ snapshot: CapturedSnapshot, cursor: CursorImageID?) -> WireEvent {
         .state(t: .zero, position: mapping.pixels(fromGlobalPoint: snapshot.location), buttons: snapshot.buttons, cursor: cursor)
     }
+}
+
+/// A producer's own append-only buffer. The producer appends; the single consumer takes everything
+/// at once, so the two never contend on anything but the lock.
+final class InputBuffer<Element: Sendable>: Sendable {
+    private let elements = Mutex<[Element]>([])
+
+    func append(_ element: Element) { elements.withLock { $0.append(element) } }
+
+    func take() -> [Element] {
+        elements.withLock { buffer in
+            defer { buffer.removeAll(keepingCapacity: true) }
+            return buffer
+        }
+    }
+
+    var isEmpty: Bool { elements.withLock(\.isEmpty) }
 }

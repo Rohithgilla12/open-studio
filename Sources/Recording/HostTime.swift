@@ -26,7 +26,7 @@ struct HostTime: Sendable, Hashable, Comparable {
     static func < (lhs: HostTime, rhs: HostTime) -> Bool { lhs.nanoseconds < rhs.nanoseconds }
 
     static func + (lhs: HostTime, rhs: Duration) -> HostTime {
-        HostTime(nanoseconds: lhs.nanoseconds + UInt64(rhs.nanoseconds))
+        HostTime(nanoseconds: UInt64(Int64(lhs.nanoseconds) + rhs.nanoseconds))
     }
 
     /// Media time since `origin`. Nil before the origin: those events describe a state the t = 0
