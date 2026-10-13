@@ -30,7 +30,6 @@ struct HostTimeTests {
 }
 
 struct DisplayMappingTests {
-    /// A secondary 2x display placed to the left of and above the main display.
     let mapping = DisplayMapping(
         displayPointFrame: CGRect(x: -1512, y: -200, width: 1512, height: 982),
         pixelSize: CGSize(width: 3024, height: 1964))

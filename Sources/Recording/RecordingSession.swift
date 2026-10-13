@@ -17,7 +17,6 @@ public actor RecordingSession {
 
     private let continuation: AsyncStream<RecordingUpdate>.Continuation
     private var phase: SessionPhase
-    /// Memoized so concurrent and repeated `stop()` calls await the same finalization.
     private var finalization: Task<FinishedRecording, Never>?
     private let capture: CaptureSink
     private let input: InputCapture
@@ -125,8 +124,6 @@ public actor RecordingSession {
         (updates, continuation) = AsyncStream.makeStream(of: RecordingUpdate.self)
     }
 
-    /// Single entry point for everything that can end or change the session. Runs the pure
-    /// transition and performs its effects.
     func handle(_ input: SessionInput) {
         let transition = SessionPhase.next(phase, input)
         phase = transition.phase
@@ -142,7 +139,6 @@ public actor RecordingSession {
         }
     }
 
-    /// Measured against the host clock the origin is on, so the limit is media time.
     private func scheduleDurationLimit() {
         guard let maxDuration else { return }
         let deadline = origin + maxDuration
@@ -162,13 +158,9 @@ public actor RecordingSession {
         }
         guard let wire else { return }
         manifest.warnings.append(wire)
-        // The take continues whether or not this write lands; the final manifest write at
-        // finalization reports a disk that keeps failing.
         try? manifest.write(to: layout)
     }
 
-    /// Ordered so each step's crash leaves a recoverable directory: stop the tap, flush and close
-    /// the event log, stop the stream and finish the writers, commit the manifest, release the lock.
     private func finalize(_ reason: StopReason) async -> FinishedRecording {
         durationTimer?.cancel()
         let end: HostTime = if reason == .durationReached, let maxDuration { origin + maxDuration } else { .now() }
@@ -210,7 +202,6 @@ public actor RecordingSession {
         }
     }
 
-    /// `YYYYMMDD-HHMMSS.osrec`, with `-2`, `-3`, ... on collision.
     private static func createDirectory(under parent: URL) throws(RecordingError) -> RecordingLayout {
         let base = RecordingLayout.directoryName(for: Date())
         let stem = String(base.dropLast(RecordingLayout.packageExtension.count + 1))
@@ -233,8 +224,6 @@ public actor RecordingSession {
     }
 }
 
-/// Routes capture and input callbacks to the session, which exists only once `start` succeeds.
-/// Inputs that arrive before then are held and delivered on attach.
 private final class SessionInlet: Sendable {
     private struct Target {
         var session: RecordingSession?
@@ -305,7 +294,6 @@ extension WireCodec {
 }
 
 extension AVCaptureDevice {
-    /// Channels of the device's active format, clamped to stereo for the AAC track.
     var channelCount: Int {
         let description = activeFormat.formatDescription
         let channels = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee.mChannelsPerFrame ?? 1

@@ -2,12 +2,6 @@ import Foundation
 internal import RecordingFormat
 import Synchronization
 
-/// The single writer of `events.ndjson` and `cursors/`.
-///
-/// Every 100 ms it drains both producer buffers, merges them by host time, converts each event to
-/// media time and screen pixels, stores any new cursor PNG before the line that references it,
-/// and appends the batch with one write. A crash loses at most the last 100 ms. There is no fsync
-/// per batch: power loss is out of scope, and fsync at 10 Hz would contend with the movie writers.
 actor EventLogWriter {
     private let layout: RecordingLayout
     private let tapBuffer: InputBuffer<CapturedInput>
@@ -31,7 +25,6 @@ actor EventLogWriter {
         self.conversion = conversion
     }
 
-    /// Writes the t = 0 `state` line from `snapshot`, then starts the drain loop.
     func begin(snapshot: CapturedSnapshot) throws {
         guard FileManager.default.createFile(atPath: layout.events.path, contents: nil) else {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: layout.events.path])
@@ -50,8 +43,6 @@ actor EventLogWriter {
         }
     }
 
-    /// One pass over both buffers. Events stamped before the origin are dropped: the t = 0
-    /// snapshot already describes that state.
     func drain() throws {
         var batch = Batch()
         for item in Pending.merged(tapBuffer.take(), cursorBuffer.take()) {
@@ -67,7 +58,6 @@ actor EventLogWriter {
         try commit(batch)
     }
 
-    /// Final drain, then close. Idempotent. Returns the number of lines written.
     func finish() async throws -> Int {
         drainLoop?.cancel()
         drainLoop = nil
@@ -123,7 +113,6 @@ actor EventLogWriter {
             }
         }
 
-        /// Each buffer is already in arrival order; a stable sort by time interleaves them.
         static func merged(_ inputs: [CapturedInput], _ cursors: [CapturedCursor]) -> [Pending] {
             let all = inputs.map(Pending.input) + cursors.map(Pending.cursor)
             return all.enumerated()

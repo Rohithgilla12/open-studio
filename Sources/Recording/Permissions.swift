@@ -7,10 +7,7 @@ public import Foundation
 /// TCC attaches each grant to the responsible process: the app bundle when the SwiftUI app records,
 /// and the terminal application when `osrec` runs from a shell.
 public enum Permission: String, Sendable, CaseIterable, CustomStringConvertible {
-    /// ScreenCaptureKit. Checked with `CGPreflightScreenCaptureAccess`.
     case screenRecording
-    /// The listen-only CGEventTap needs Input Monitoring, not Accessibility: it never posts or
-    /// modifies events.
     case inputMonitoring
     /// Required only when the configuration selects a microphone.
     case microphone

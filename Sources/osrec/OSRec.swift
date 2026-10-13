@@ -6,10 +6,6 @@ import Recording
 internal import RecordingFormat
 import Synchronization
 
-/// Verification harness. Every subcommand is a thin shell over the public Recording API, the same
-/// one the SwiftUI app will call, so a passing CLI run exercises the real paths.
-///
-/// Run from a terminal, TCC charges Screen Recording and Input Monitoring to the terminal app.
 @main
 struct OSRec: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -133,8 +129,6 @@ struct Record: AsyncParsableCommand {
     }
 }
 
-/// First Ctrl-C stops the session cleanly. A second one exits at once and leaves the directory for
-/// `osrec recover`.
 final class InterruptHandler: Sendable {
     private let onFirst: @Sendable () -> Void
     private let source: DispatchSourceSignal
@@ -241,7 +235,6 @@ enum MovieSummary {
         }
     }
 
-    /// Counts samples without decoding: a nil output setting passes compressed samples through.
     private static func sampleCount(_ asset: AVAsset, _ track: AVAssetTrack) throws -> Int {
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
@@ -255,8 +248,6 @@ enum MovieSummary {
     }
 }
 
-/// Compares the host time at which a synthetic move was posted with the time the recording gives
-/// it (origin + media time). Posted moves are matched by exact pixel position, nearest in time.
 enum ClockCheck {
     struct Posted {
         var hostNanos: UInt64

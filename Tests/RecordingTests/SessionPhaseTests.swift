@@ -7,7 +7,6 @@ struct SessionPhaseTests {
     let finished = FinishedRecording(
         directory: URL(filePath: "/tmp/x.osrec"), duration: .seconds(5), hasMicrophone: false, termination: .userStopped)
 
-    /// Drives inputs through the machine and returns every effect in order.
     func run(_ inputs: [SessionInput]) -> (SessionPhase, [SessionEffect]) {
         var phase = recording
         var effects: [SessionEffect] = []

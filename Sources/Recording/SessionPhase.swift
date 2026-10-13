@@ -1,11 +1,3 @@
-/// The session lifecycle after `start` returns. Starting is not a phase: a session exists only
-/// once frames are being written, so "stop while starting" cannot happen.
-///
-///     recording --stopRequested / durationReached / streamFailed--> stopping(reason)
-///     stopping  --finalized(result)-------------------------------> finished(result)
-///
-/// The first termination reason wins. A later one is ignored, so `stop()` after a stream failure,
-/// or a stream failure during finalization, is a no-op rather than a race.
 enum SessionPhase: Sendable, Equatable {
     case recording(RecordingProgress)
     case stopping(StopReason)
@@ -38,8 +30,6 @@ enum SessionPhase: Sendable, Equatable {
     }
 }
 
-/// Why a live session stops. `Termination` adds the two outcomes a live session never produces
-/// itself (recovery and a failed finalization), so finalization takes this narrower type.
 enum StopReason: Sendable, Equatable {
     case userStopped
     case durationReached

@@ -9,7 +9,6 @@ struct HostTime: Sendable, Hashable, Comparable {
 
     init(nanoseconds: UInt64) { self.nanoseconds = nanoseconds }
 
-    /// A PTS on `CMClockGetHostTimeClock()`.
     init(_ time: CMTime) {
         let scaled = time.timescale == Self.timescale ? time : CMTimeConvertScale(time, timescale: Self.timescale, method: .default)
         self.init(nanoseconds: UInt64(max(0, scaled.value)))
@@ -23,8 +22,6 @@ struct HostTime: Sendable, Hashable, Comparable {
         HostTime(nanoseconds: UInt64(Int64(lhs.nanoseconds) + rhs.nanoseconds))
     }
 
-    /// Media time since `origin`. Nil before the origin: those events describe a state the t = 0
-    /// snapshot already captures.
     func mediaTime(since origin: HostTime) -> MediaTime? {
         guard nanoseconds >= origin.nanoseconds else { return nil }
         return MediaTime(microseconds: Int64((nanoseconds - origin.nanoseconds) / 1000))

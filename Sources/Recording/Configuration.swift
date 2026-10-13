@@ -69,7 +69,6 @@ public struct MicrophoneInfo: Sendable, Equatable, Identifiable {
     public let isDefault: Bool
 }
 
-/// Read-only discovery for pickers and `osrec displays`.
 public enum CaptureSources {
     public static func displays() async throws(RecordingError) -> [DisplayInfo] {
         try await shareableDisplays().map(\.info)

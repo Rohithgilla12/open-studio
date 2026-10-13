@@ -4,11 +4,6 @@ import Foundation
 internal import RecordingFormat
 import ScreenCaptureKit
 
-/// Owns the SCStream and both movie writers.
-///
-/// The actor's executor is the serial queue ScreenCaptureKit delivers sample buffers on, so the
-/// per-frame path enters isolation with `assumeIsolated` and never hops. At 60 to 120 frames per
-/// second an `await` per frame would add scheduling jitter for nothing.
 actor CaptureSink {
     nonisolated let queue: DispatchSerialQueue
     nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
@@ -36,6 +31,7 @@ actor CaptureSink {
     private var lastDropReport: HostTime?
     private var lastProgress: HostTime?
     private var stopping = false
+    private var streamEnded = false
 
     init(plan: Plan, eventsWritten: @escaping @Sendable () -> Int, report: @escaping @Sendable (SessionInput) -> Void) {
         queue = DispatchSerialQueue(label: "open-studio.capture")
@@ -108,7 +104,6 @@ actor CaptureSink {
         }
     }
 
-    /// The PTS of the first complete frame, which both writers' sessions start at. Nil on timeout.
     func firstFrame(timeout: Duration) async -> HostTime? {
         if let origin { return origin }
         return await withCheckedContinuation { continuation in
@@ -119,13 +114,15 @@ actor CaptureSink {
         }
     }
 
-    /// Stops the stream and ends both writer sessions at `end`. Returns the screen duration.
     func finish(at end: HostTime) async throws(RecordingError) -> Duration {
         stopping = true
         heartbeat?.cancel()
-        if let stream {
-            // A stream that already stopped on its own throws here; the writers still hold the frames.
-            try? await stream.stopCapture()
+        if let stream, !streamEnded {
+            do {
+                try await stream.stopCapture()
+            } catch {
+                throw .captureFailedToStart("stopCapture: \(error.localizedDescription)")
+            }
         }
         guard let origin, let screen else { throw .noFramesDelivered }
         let endTime = max(end, origin)
@@ -140,8 +137,6 @@ actor CaptureSink {
         return endTime.duration(since: origin)
     }
 
-    /// Stops the stream without finishing the writers. For a failed start, whose directory is
-    /// about to be removed.
     func abandon() async {
         stopping = true
         heartbeat?.cancel()
@@ -150,6 +145,7 @@ actor CaptureSink {
     }
 
     func streamStopped(_ message: String) {
+        streamEnded = true
         guard !stopping else { return }
         report(.streamFailed(message))
     }
@@ -223,8 +219,6 @@ actor CaptureSink {
     }
 }
 
-/// The ScreenCaptureKit callbacks. Sample buffers arrive on `sink.queue`, so they enter the actor
-/// without a hop; the stop notification arrives on an arbitrary queue and hops.
 private final class StreamOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     let sink: CaptureSink
 

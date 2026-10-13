@@ -14,19 +14,7 @@ extension RecordingSession {
         guard FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue
         else { throw .notARecording(directory) }
 
-        // A reader's health probe takes a shared lock for an instant, which makes an exclusive
-        // acquire fail as if a recorder were alive. A few retries tell the two apart.
-        var lock: DirectoryLock?
-        for attempt in 1...Recovery.lockAttempts {
-            do {
-                lock = try DirectoryLock.acquire(in: layout)
-            } catch {
-                throw .unreadable("cannot open \(layout.lock.path): \(error.localizedDescription)")
-            }
-            if lock != nil || attempt == Recovery.lockAttempts { break }
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        guard let lock else { throw .stillRecording }
+        guard let lock = try await Recovery.acquireLockOutlastingReaderProbes(in: layout) else { throw .stillRecording }
         defer { lock.release() }
 
         let metadata: RecordingMetadata
@@ -60,7 +48,6 @@ extension RecordingSession {
             }
             notes.append("truncated a partial event line (\(metadata.events.tornTailByteCount) bytes)")
         }
-        // An unreadable movie still leaves the events worth keeping, so it is a note, not a failure.
         var duration: Duration = .zero
         switch await Recovery.probeDuration(of: layout.screen) {
         case .success(let probed): duration = probed
@@ -82,14 +69,28 @@ extension RecordingSession {
 }
 
 enum Recovery {
-    static let lockAttempts = 5
+    /// A reader's health probe holds a shared lock for an instant, during which an exclusive
+    /// acquire fails exactly as it would against a live recorder. Nil only after every retry
+    /// found the lock held.
+    static func acquireLockOutlastingReaderProbes(in layout: RecordingLayout) async throws(RecoveryError) -> DirectoryLock? {
+        for attempt in 1...5 {
+            let lock: DirectoryLock?
+            do {
+                lock = try DirectoryLock.acquire(in: layout)
+            } catch {
+                throw .unreadable("cannot open \(layout.lock.path): \(error.localizedDescription)")
+            }
+            if let lock { return lock }
+            if attempt < 5 { try? await Task.sleep(for: .milliseconds(50)) }
+        }
+        return nil
+    }
 
     enum Probe {
         case success(Duration)
         case failure(String)
     }
 
-    /// A fragmented movie reads up to its last complete fragment.
     static func probeDuration(of url: URL) async -> Probe {
         guard FileManager.default.fileExists(atPath: url.path) else { return .failure("missing") }
         do {

@@ -2,25 +2,14 @@ import AVFoundation
 import CoreMedia
 import Foundation
 
-/// One `AVAssetWriter` writing a fragmented QuickTime movie.
-///
 /// `movieFragmentInterval` = 1 s is the whole media crash-safety story: an interrupted fragmented
 /// movie opens and plays up to its last complete fragment (measured in `Experiments/README.md`).
-///
-/// Uses the classic `AVAssetWriterInput` path on purpose. The macOS 27 SDK deprecates
-/// `expectsMediaDataInRealTime`, `isReadyForMoreMediaData`, and `append(_:)` for Swift in favour of
-/// an input receiver that exists only on macOS 27. With a macOS 15 deployment target the classic
-/// path is the only one available on every supported OS, the deprecation does not fire, and an
-/// availability branch would double the writer for no behavioural gain. Revisit when the target
-/// moves to 27. ScreenCaptureKit hands over timed `CMSampleBuffer`s, so no pixel buffer adaptor
-/// is involved either way.
-///
-/// Not Sendable on purpose: it lives inside `CaptureSink` and is touched only on its queue.
+/// Uses the `AVAssetWriterInput` path that the macOS 27 SDK deprecates for Swift, because its
+/// replacement (input receivers) exists only on macOS 27 and the deployment target is 15. See
+/// the D3 section of docs/design/accepted/rationale.md.
 final class MovieWriter {
     enum Kind {
-        /// Keyframe interval 2 × frame rate, constant quality 0.85.
         case screen(codec: VideoCodec, pixelSize: CGSize, frameRate: Int)
-        /// AAC at 48 kHz.
         case microphone(channels: Int)
     }
 
@@ -49,7 +38,6 @@ final class MovieWriter {
         writer.startSession(atSourceTime: origin.cmTime)
     }
 
-    /// False when the input is busy: a real-time source drops the sample rather than queueing.
     func append(_ buffer: CMSampleBuffer) throws(RecordingError) -> Bool {
         guard input.isReadyForMoreMediaData else { return false }
         guard input.append(buffer) else { throw .captureFailedToStart(failureDescription) }
@@ -57,7 +45,6 @@ final class MovieWriter {
         return true
     }
 
-    /// Ends the session at `end`, so a static final screen still lasts to the end of the take.
     func finish(at end: HostTime) async throws(RecordingError) {
         guard writer.status == .writing else { throw .captureFailedToStart(failureDescription) }
         writer.endSession(atSourceTime: end.cmTime)

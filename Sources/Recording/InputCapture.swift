@@ -5,9 +5,6 @@ import Foundation
 internal import RecordingFormat
 import Synchronization
 
-/// Two producers, each with its own buffer: the event tap thread and the cursor watcher on the
-/// main actor. Neither writes the other's state. `EventLogWriter` is the single consumer and
-/// merges them by host time when it drains.
 final class InputCapture: Sendable {
     let tapBuffer = InputBuffer<CapturedInput>()
     let cursorBuffer = InputBuffer<CapturedCursor>()
@@ -31,7 +28,6 @@ final class InputCapture: Sendable {
         await cursor.stop()
     }
 
-    /// Pointer position, held buttons, and the current cursor image at the moment of the call.
     func snapshot() async -> CapturedSnapshot {
         let location = CGEvent(source: nil)?.location ?? .zero
         var buttons: Set<WireButton> = []
@@ -42,10 +38,6 @@ final class InputCapture: Sendable {
     }
 }
 
-/// A dedicated thread running a CFRunLoop with a session-level, listen-only CGEventTap.
-///
-/// The callback copies the fields it needs and returns at once: a slow callback gets the tap
-/// disabled by the system.
 final class EventTapThread: Sendable {
     private let context: TapContext
 
@@ -85,11 +77,10 @@ final class EventTapThread: Sendable {
     }
 }
 
-/// `port` and `runLoop` are written once on the tap thread before `start()`'s continuation
-/// resumes, which orders them before any read: the callback reads `port` on the tap thread, and
-/// `stop()` reads `runLoop` after `start()` returned. `CFRunLoopStop` is itself thread-safe.
-/// That is why this is `@unchecked Sendable` rather than a Mutex, which cannot hand out the
-/// non-Sendable CF values.
+/// `@unchecked Sendable` because `port` and `runLoop` are CF handles with no Sendable annotation
+/// and a Mutex cannot hand them out. Each is written once on the tap thread before `start()`'s
+/// continuation resumes, so every later read (the callback on the tap thread, `stop()` after
+/// `start()` returned) is ordered after the write.
 private final class TapContext: @unchecked Sendable {
     let sink: @Sendable (CapturedInput) -> Void
     let onReenabled: @Sendable (HostTime) -> Void
@@ -114,7 +105,6 @@ private final class TapContext: @unchecked Sendable {
             return
         }
         guard let kind = CapturedInput.Kind(type, event) else { return }
-        // Timestamps are nanoseconds on CLOCK_UPTIME_RAW (measured in Experiments/README.md).
         sink(CapturedInput(time: HostTime(nanoseconds: event.timestamp), location: event.location, kind: kind))
     }
 }
@@ -170,11 +160,8 @@ extension WireModifier {
     }
 }
 
-/// Polls `NSCursor.currentSystem` on the main actor at 60 Hz.
-///
 /// There is no public cursor-changed notification for other apps' cursors, so polling is the only
-/// option. Object identity and a digest of the bitmap gate the PNG encode, so the steady state
-/// costs one hash of a small bitmap per tick.
+/// option.
 @MainActor
 final class CursorWatcher {
     private let sink: @Sendable (CapturedCursor) -> Void
