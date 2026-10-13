@@ -1,8 +1,5 @@
 public import Foundation
 
-/// The one place that names files inside a recording directory. Writers and readers both go
-/// through it.
-///
 ///     20261013-142233.osrec/
 ///       recording.json      manifest, written at the first screen frame and again at finalization
 ///       events.ndjson       append-only input and cursor events, one JSON object per line
@@ -34,14 +31,14 @@ public struct RecordingLayout: Sendable, Hashable {
     public var cursors: URL { directory.appending(path: Self.cursorsName, directoryHint: .isDirectory) }
     public var lock: URL { directory.appending(path: Self.lockName, directoryHint: .notDirectory) }
 
-    /// Relative to the recording directory, for consumers that hand the path to a renderer.
+    /// Relative to the recording directory.
     public static func cursorImagePath(_ id: CursorImageID) -> String { "\(cursorsName)/\(id.rawValue).png" }
 
     public func cursorImage(_ id: CursorImageID) -> URL {
         directory.appending(path: Self.cursorImagePath(id), directoryHint: .notDirectory)
     }
 
-    /// `YYYYMMDD-HHMMSS.osrec` in the given time zone, so a directory listing sorts by start time.
+    /// `YYYYMMDD-HHMMSS.osrec` in the given time zone.
     public static func directoryName(for start: Date, in timeZone: TimeZone = .current) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
@@ -52,8 +49,6 @@ public struct RecordingLayout: Sendable, Hashable {
     }
 }
 
-/// The version gate shared by the writer and every reader.
-///
 /// Additive changes (a new event type, a new optional manifest key) keep the version, because
 /// readers ignore event types and keys they do not know. A change to the meaning of an existing
 /// field bumps the version, and readers refuse versions newer than `current`.

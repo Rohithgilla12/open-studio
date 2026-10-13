@@ -2,8 +2,7 @@ public import Foundation
 
 /// NDJSON framing for `events.ndjson`.
 ///
-/// A line is a record only once its terminating newline is written. The recorder appends each
-/// batch of lines with one write(2), so a process crash can leave at most one unterminated tail.
+/// A line is a record only once its terminating newline is written.
 public enum EventLog {
     /// One line, terminated by a newline. Keys are sorted, so equal events give equal bytes.
     public static func encodeLine(_ event: WireEvent) throws -> Data {
@@ -14,11 +13,9 @@ public enum EventLog {
         return line
     }
 
-    /// Decodes a whole file.
-    ///
     /// Bytes after the last newline are the torn tail, reported and skipped. Any terminated line
-    /// that does not decode is a hard error, because a crash cannot produce it. A line with a
-    /// `type` this reader does not know is counted and skipped.
+    /// that does not decode is a hard error. A line with a `type` this reader does not know is
+    /// counted and skipped.
     public static func decode(_ data: Data) throws(FormatError) -> DecodedEventLog {
         let decoder = JSONDecoder()
         var events: [WireEvent] = []
@@ -50,12 +47,11 @@ public enum EventLog {
 
 public struct DecodedEventLog: Sendable, Equatable {
     public let events: [WireEvent]
-    /// Length of the newline-terminated prefix. Recovery truncates the file to this length.
+    /// Length of the newline-terminated prefix.
     public let validByteCount: Int
     /// Bytes after the last newline, from a line the recorder was writing when it died.
     public let tornTailByteCount: Int
-    /// Lines whose `type` this reader does not know, counted by type. Additive format changes land
-    /// here instead of failing the read.
+    /// Lines whose `type` this reader does not know, counted by type.
     public let unknownTypeCounts: [String: Int]
 }
 

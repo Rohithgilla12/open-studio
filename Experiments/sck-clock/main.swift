@@ -1,5 +1,3 @@
-// Which clock are SCStream sample buffer PTS on? Compares each screen buffer's PTS (and the
-// SCStreamFrameInfo.displayTime attachment) with the host clock read on arrival.
 import CoreMedia
 import Darwin
 import Foundation
@@ -8,6 +6,7 @@ import ScreenCaptureKit
 var timebase = mach_timebase_info_data_t()
 mach_timebase_info(&timebase)
 
+// `lines` is written only on the sample handler queue and read only after `done` signals.
 final class Output: NSObject, SCStreamOutput, @unchecked Sendable {
     var lines: [String] = []
     let done = DispatchSemaphore(value: 0)

@@ -21,7 +21,6 @@ enum Fixtures {
 
     static let arrowID = CursorImageID(rawValue: "9f2c4e1a7b3d5c60")!
 
-    /// One of every event kind.
     static let everyKind: [WireEvent] = [
         .cursorImage(CursorImageDeclaration(
             id: arrowID, hotspot: WirePoint(x: 8, y: 6), size: WireSize(width: 34, height: 46))),
@@ -45,7 +44,6 @@ enum Fixtures {
         return url
     }
 
-    /// Rewrites one JSON object's top-level keys, for files a newer or broken writer might produce.
     static func editJSON(_ data: Data, _ edit: (inout [String: Any]) -> Void) throws -> Data {
         var object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         edit(&object)

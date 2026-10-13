@@ -3,7 +3,7 @@ import Synchronization
 
 /// The live recorder's exclusive flock(2) on `.lock`, held for the whole take.
 ///
-/// The kernel drops a flock when its holder dies, so unlike a PID file this cannot go stale.
+/// The kernel drops a flock when its holder dies, so it cannot go stale.
 /// flock belongs to the open file description, so a second open(2) of `.lock` in the same process
 /// contends with it exactly as another process would.
 public final class DirectoryLock: Sendable {
@@ -34,9 +34,9 @@ public final class DirectoryLock: Sendable {
 
     deinit { release() }
 
-    /// Whether some live process holds the lock. Takes and drops a shared lock, so two probes never
-    /// see each other as a recorder. A missing `.lock` is not held.
-    static func isHeld(in layout: RecordingLayout) throws(FormatError) -> Bool {
+    /// Takes a shared lock and drops it at once. True when an exclusive holder refuses it. For that
+    /// instant, an `acquire` fails as if a recorder held the lock.
+    static func sharedLockRefused(in layout: RecordingLayout) throws(FormatError) -> Bool {
         let fd = open(layout.lock.path, O_RDONLY | O_CLOEXEC)
         if fd < 0 {
             if errno == ENOENT { return false }

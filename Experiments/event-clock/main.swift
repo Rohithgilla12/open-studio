@@ -1,9 +1,3 @@
-// Which clock is CGEvent.timestamp on? A listen-only session tap for mouseMoved compares each
-// event's timestamp with mach_absolute_time() and clock_gettime_nsec_np(CLOCK_UPTIME_RAW) read in
-// the callback. Movement comes from posted synthetic events, so it runs unattended; any real mouse
-// movement during the run is reported separately.
-//
-//   event-clock [count]
 import CoreGraphics
 import Darwin
 import Foundation

@@ -1,16 +1,14 @@
 import Foundation
 
-/// One line of `events.ndjson`, and the single list of event kinds. The recorder encodes these and
-/// Timeline decodes these, so a new kind is one case here plus a compile error at each switch.
+/// One line of `events.ndjson`.
 ///
 /// Times are `MediaTime`. Coordinates and sizes are screen video pixels.
 public enum WireEvent: Sendable, Hashable {
-    /// Declares a cursor image. It has no time because it is a declaration, not an occurrence. Its
-    /// PNG is on disk before this line is written, and this line comes before any reference to it.
+    /// Declares a cursor image. Its PNG is on disk before this line is written, and this line comes
+    /// before any reference to it.
     case cursorImage(CursorImageDeclaration)
 
-    /// The pointer, held buttons, and cursor image at `t`. Written at t = 0 so the stream is
-    /// self-contained from the first frame.
+    /// The pointer, held buttons, and cursor image at `t`. Written at t = 0.
     case state(t: MediaTime, position: WirePoint, buttons: Set<WireButton>, cursor: CursorImageID?)
 
     /// Pointer movement, including drags. Whether a button is held follows from `down` and `up`.
@@ -18,7 +16,7 @@ public enum WireEvent: Sendable, Hashable {
     case down(t: MediaTime, button: WireButton, position: WirePoint, clickCount: Int)
     case up(t: MediaTime, button: WireButton, position: WirePoint)
 
-    /// Scroll deltas as the event reported them. Recorded for later features, unused by auto-zoom.
+    /// Scroll deltas as the event reported them.
     case scroll(t: MediaTime, position: WirePoint, dx: Double, dy: Double)
 
     case key(t: MediaTime, stroke: KeyStroke)
@@ -48,19 +46,16 @@ public enum WireModifier: String, Sendable, Hashable, CaseIterable, Codable {
 /// A key press, without the typed text.
 ///
 /// The key code survives only for shortcuts, while Command or Control is held. Ordinary typing,
-/// passwords included, is stored as a time and modifiers alone. The typing-fade rule needs only
-/// the times.
+/// passwords included, is stored as a time and modifiers alone.
 public struct KeyStroke: Sendable, Hashable {
     public let modifiers: Set<WireModifier>
     public let keyCode: UInt16?
 
-    /// The privacy rule lives here, so no caller can write a plain key code by mistake.
     public init(modifiers: Set<WireModifier>, pressedKeyCode: UInt16) {
         self.modifiers = modifiers
         keyCode = Self.isShortcut(modifiers) ? pressedKeyCode : nil
     }
 
-    /// Fails for a key code recorded without Command or Control, which the format forbids.
     init?(modifiers: Set<WireModifier>, recordedKeyCode: UInt16?) {
         if recordedKeyCode != nil, !Self.isShortcut(modifiers) { return nil }
         self.modifiers = modifiers
@@ -72,8 +67,6 @@ public struct KeyStroke: Sendable, Hashable {
     }
 }
 
-/// The `type` discriminator of each line. `WireEvent.kind` switches exhaustively over the events
-/// and decoding switches exhaustively over the kinds, so the two cannot drift apart.
 enum WireEventKind: String, CaseIterable {
     case cursorImage, state, move, down, up, scroll, key, cursor
 }
@@ -93,9 +86,6 @@ extension WireEvent {
     }
 }
 
-/// Flat objects with a `type` discriminator, such as
-/// `{"button":"left","clickCount":1,"t":512000,"type":"down","x":1210.5,"y":644}`. Points and
-/// sizes are flattened so lines stay greppable.
 enum WireEventKey: String, CodingKey {
     case type, t, x, y, buttons, cursor, button, clickCount, dx, dy, modifiers, keyCode, id
     case hotspotX, hotspotY, width, height

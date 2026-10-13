@@ -1,9 +1,6 @@
 public import Foundation
 
 enum AtomicFile {
-    /// Writes `data` to a temporary file in the same directory, then rename(2)s it over `url`.
-    /// There is no fsync: power loss is out of scope, and a process crash leaves the old file or
-    /// the new one.
     static func replace(_ url: URL, with data: Data) throws {
         let temporary = url.deletingLastPathComponent()
             .appending(path: ".\(url.lastPathComponent).\(UUID().uuidString).tmp", directoryHint: .notDirectory)

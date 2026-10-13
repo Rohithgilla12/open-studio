@@ -154,8 +154,6 @@ struct ManifestTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["recording.json"])
     }
 
-    /// A reader polling while the writer flips between two manifests of different sizes must only
-    /// ever see one of them whole. A truncate-then-write would expose an empty or partial file.
     @Test func concurrentReaderSeesOldOrNewManifestNeverAMix() throws {
         let directory = try Fixtures.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

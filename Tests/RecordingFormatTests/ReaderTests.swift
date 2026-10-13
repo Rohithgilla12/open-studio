@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import RecordingFormat
 
-/// Holds `.lock` with flock(2) from a separate process, through the system's lockf(1).
 private final class LockHolder {
     let process = Process()
 
@@ -11,7 +10,7 @@ private final class LockHolder {
         process.arguments = ["-k", layout.lock.path, "/bin/sleep", "10"]
         try process.run()
         let deadline = Date().addingTimeInterval(5)
-        while try !DirectoryLock.isHeld(in: layout) {
+        while try !DirectoryLock.sharedLockRefused(in: layout) {
             guard Date() < deadline else { throw POSIXError(.ETIMEDOUT) }
             Thread.sleep(forTimeInterval: 0.01)
         }

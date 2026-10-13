@@ -3,9 +3,7 @@ public import Foundation
 /// `recording.json`.
 ///
 /// Clock: every time in the directory is a `MediaTime`, integer microseconds since the first
-/// complete screen frame. The microphone writer starts its session at the same host time, so
-/// microphone media time is the same clock. The recorder converts events from host time before
-/// writing them, so readers never see host time.
+/// complete screen frame. Microphone media time is on the same clock.
 ///
 /// Space: every coordinate is in screen video pixels, origin top-left of the captured display,
 /// y down. A point outside `[0, pixelWidth) × [0, pixelHeight)` means the pointer was on another
@@ -41,8 +39,6 @@ public struct WireManifest: Sendable, Equatable {
     }
 }
 
-/// The only question a reader asks of the status is whether the directory is complete. How the
-/// take ended exists only once it is.
 public enum ManifestStatus: Sendable, Equatable {
     case recording
     case finalized(duration: MediaTime, termination: WireTermination)
@@ -77,8 +73,8 @@ public struct WireRecorderInfo: Sendable, Equatable, Codable {
     }
 }
 
-/// Encoded with the constant `unit` and `origin` of format version 1, so a person reading the file
-/// needs no spec. Decoding rejects any other unit or origin.
+/// Encoded with the constant `unit` and `origin` of format version 1. Decoding rejects any other
+/// unit or origin.
 public struct WireClock: Sendable, Equatable {
     /// Host time of media time 0, in nanoseconds on `CLOCK_UPTIME_RAW`, the clock of SCStream PTS
     /// and `CGEvent.timestamp`. Diagnostics only: no reader needs it.
@@ -363,8 +359,6 @@ extension ManifestWarning: Encodable {
     }
 }
 
-/// A warning kind added by a newer recorder decodes to nil and is dropped, so an additive change
-/// does not make the whole manifest unreadable.
 private struct TolerantWarning: Decodable {
     let warning: ManifestWarning?
 

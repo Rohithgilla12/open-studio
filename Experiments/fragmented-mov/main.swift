@@ -1,10 +1,3 @@
-// Does a fragmented QuickTime movie survive SIGKILL mid-write?
-//
-//   fragmented-mov write <out.mov> <fragmentSeconds, 0 = none> <codec hevc|h264> <seconds>
-//   fragmented-mov read <in.mov>
-//   fragmented-mov run <workDir> <killAfterSeconds>
-//
-// `run` spawns `write` as a child, SIGKILLs it, then spawns `read` as a separate process.
 import AVFoundation
 import CoreVideo
 import Foundation
