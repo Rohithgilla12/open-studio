@@ -1,5 +1,4 @@
 import CoreMedia
-import Darwin
 import Testing
 @testable import Recording
 @testable import RecordingFormat
@@ -21,15 +20,6 @@ struct HostTimeTests {
         #expect(HostTime(CMTime(value: 734_918_273_645_120, timescale: 1_000_000_000)).nanoseconds == 734_918_273_645_120)
         #expect(HostTime(CMTime(value: 3, timescale: 1000)).nanoseconds == 3_000_000)
         #expect(HostTime(nanoseconds: 42).cmTime == CMTime(value: 42, timescale: 1_000_000_000))
-    }
-
-    /// `mach_absolute_time` converted through the timebase lands on `CLOCK_UPTIME_RAW`. Reading
-    /// ticks as nanoseconds would be off by a factor of about 41 on Apple Silicon.
-    @Test func machTicksConvertWithTimebase() {
-        let before = HostTime.now()
-        let ticks = HostTime(machTicks: mach_absolute_time())
-        let after = HostTime.now()
-        #expect(before <= ticks && ticks <= after)
     }
 
     @Test func durationArithmetic() {

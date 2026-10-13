@@ -42,18 +42,9 @@ public actor RecordingSession {
         let display = try await CaptureSources.resolve(configuration.display)
         let microphone = try CaptureSources.resolve(configuration.microphone)
         let layout = try createDirectory(under: configuration.outputDirectory)
-        let lock: DirectoryLock
-        do {
-            guard let acquired = try DirectoryLock.acquire(in: layout) else {
-                throw RecordingError.captureFailedToStart("another recorder holds \(layout.lock.path)")
-            }
-            lock = acquired
-        } catch let error as RecordingError {
+        guard let lock = try acquireLock(in: layout) else {
             try? FileManager.default.removeItem(at: layout.directory)
-            throw error
-        } catch {
-            try? FileManager.default.removeItem(at: layout.directory)
-            throw .outputDirectoryUnwritable(layout.directory, error.localizedDescription)
+            throw .captureFailedToStart("another recorder holds \(layout.lock.path)")
         }
 
         let refresh = display.info.refreshRate
@@ -63,7 +54,7 @@ public actor RecordingSession {
         let input = InputCapture(displayScale: mapping.scale.width, onTapReenabled: inlet.tapReenabled)
         let capture = CaptureSink(
             plan: CaptureSink.Plan(
-                display: display, configuration: configuration, frameRate: frameRate,
+                display: display, codec: configuration.codec, frameRate: frameRate,
                 microphone: microphone.map { ($0.uniqueID, $0.channelCount) }, layout: layout),
             eventsWritten: { inlet.eventsWritten }, report: inlet.send)
 
@@ -208,6 +199,15 @@ public actor RecordingSession {
             termination: problems.isEmpty ? reason.termination : .finalizationFailed(problems.joined(separator: "; ")))
         handle(.finalized(finished))
         return finished
+    }
+
+    private static func acquireLock(in layout: RecordingLayout) throws(RecordingError) -> DirectoryLock? {
+        do {
+            return try DirectoryLock.acquire(in: layout)
+        } catch {
+            try? FileManager.default.removeItem(at: layout.directory)
+            throw .outputDirectoryUnwritable(layout.directory, error.localizedDescription)
+        }
     }
 
     /// `YYYYMMDD-HHMMSS.osrec`, with `-2`, `-3`, ... on collision.

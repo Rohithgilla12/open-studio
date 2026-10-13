@@ -89,8 +89,8 @@ public enum Permissions {
 
     /// Who TCC charges this process's grants to.
     public static var responsibleProcess: String {
-        if Bundle.main.bundleIdentifier != nil {
-            return Bundle.main.infoDictionary?["CFBundleName"] as? String ?? Bundle.main.bundleIdentifier!
+        if let identifier = Bundle.main.bundleIdentifier {
+            return Bundle.main.infoDictionary?["CFBundleName"] as? String ?? identifier
         }
         let terminal = ProcessInfo.processInfo.environment["TERM_PROGRAM"] ?? "unknown"
         return "the terminal application that launched this process (TERM_PROGRAM=\(terminal))"

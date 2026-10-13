@@ -15,7 +15,7 @@ actor CaptureSink {
 
     struct Plan: Sendable {
         var display: ResolvedDisplay
-        var configuration: RecordingConfiguration
+        var codec: VideoCodec
         var frameRate: Int
         var microphone: (uniqueID: String, channels: Int)?
         var layout: RecordingLayout
@@ -47,7 +47,7 @@ actor CaptureSink {
     func startCapture() async throws(RecordingError) {
         let info = plan.display.info
         screen = try MovieWriter(
-            url: plan.layout.screen, kind: .screen(codec: plan.configuration.codec, pixelSize: info.pixelSize, frameRate: plan.frameRate))
+            url: plan.layout.screen, kind: .screen(codec: plan.codec, pixelSize: info.pixelSize, frameRate: plan.frameRate))
         if let microphone = plan.microphone {
             self.microphone = try MovieWriter(url: plan.layout.microphone, kind: .microphone(channels: microphone.channels))
         }
