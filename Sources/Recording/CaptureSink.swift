@@ -109,6 +109,14 @@ actor CaptureSink {
         return endTime.duration(since: origin)
     }
 
+    /// Stops the stream without finishing the writers. For a failed start, whose directory is
+    /// about to be removed.
+    func abandon() async {
+        stopping = true
+        resolveFirstFrame(nil)
+        if let stream { try? await stream.stopCapture() }
+    }
+
     func streamStopped(_ message: String) {
         guard !stopping else { return }
         report(.streamFailed(message))

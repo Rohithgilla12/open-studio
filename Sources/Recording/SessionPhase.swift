@@ -8,7 +8,7 @@
 /// or a stream failure during finalization, is a no-op rather than a race.
 enum SessionPhase: Sendable, Equatable {
     case recording(RecordingProgress)
-    case stopping(Termination)
+    case stopping(StopReason)
     case finished(FinishedRecording)
 
     static func next(_ phase: SessionPhase, _ input: SessionInput) -> SessionTransition {
@@ -33,8 +33,24 @@ enum SessionPhase: Sendable, Equatable {
         }
     }
 
-    private static func stopping(_ reason: Termination) -> SessionTransition {
+    private static func stopping(_ reason: StopReason) -> SessionTransition {
         SessionTransition(phase: .stopping(reason), effects: [.finalize(reason)])
+    }
+}
+
+/// Why a live session stops. `Termination` adds the two outcomes a live session never produces
+/// itself (recovery and a failed finalization), so finalization takes this narrower type.
+enum StopReason: Sendable, Equatable {
+    case userStopped
+    case durationReached
+    case streamFailed(String)
+
+    var termination: Termination {
+        switch self {
+        case .userStopped: .userStopped
+        case .durationReached: .durationReached
+        case .streamFailed(let message): .streamFailed(message)
+        }
     }
 }
 
@@ -54,5 +70,5 @@ struct SessionTransition: Sendable, Equatable {
 
 enum SessionEffect: Sendable, Equatable {
     case emit(RecordingUpdate)
-    case finalize(Termination)
+    case finalize(StopReason)
 }
