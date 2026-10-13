@@ -46,6 +46,26 @@ struct ManifestTests {
         #expect(try WireManifest.decode(manifest.encoded()) == manifest)
     }
 
+    @Test func decodesTheDocumentedExample() throws {
+        let example = """
+        {
+          "clock" : { "origin" : "first-screen-frame", "originHostTimeNanos" : 734918273645120, "unit" : "microseconds" },
+          "createdAt" : "2026-10-13T06:22:33.412Z",
+          "display" : { "displayID" : 1, "name" : "Built-in Retina Display", "pointFrame" : [0, 0, 1512, 982], "refreshRate" : 120 },
+          "format" : "open-studio.recording",
+          "formatVersion" : 1,
+          "id" : "8E0C2B9A-6F1D-4C55-9C3E-2D7A9B4F1E10",
+          "microphone" : { "channelCount" : 1, "deviceName" : "MacBook Pro Microphone", "sampleRate" : 48000 },
+          "recorder" : { "name" : "osrec", "osVersion" : "27.0", "version" : "0.1.0" },
+          "screen" : { "codec" : "hevc", "maxFrameRate" : 60, "pixelHeight" : 1964, "pixelWidth" : 3024 },
+          "status" : "recording",
+          "warnings" : [ ]
+        }
+        """
+
+        #expect(try WireManifest.decode(Data(example.utf8)) == Fixtures.manifest())
+    }
+
     @Test func recordingStatusCarriesNoDurationOrTermination() throws {
         let json = try JSONSerialization.jsonObject(with: Fixtures.manifest().encoded()) as! [String: Any]
 

@@ -58,9 +58,14 @@ The recorder writes this when the first complete frame arrives, not at launch. A
     "pixelHeight" : 1964,
     "pixelWidth" : 3024
   },
-  "status" : "recording"
+  "status" : "recording",
+  "warnings" : [
+
+  ]
 }
 ```
+
+`warnings` records degradation that did not end the take, as it happens, so it survives a crash. A lost microphone appends `{"at" : 1500000, "kind" : "microphoneLost", "message" : "device removed"}`. A re-enabled event tap appends `{"at" : 2250000, "kind" : "inputTapReenabled"}`.
 
 ### After a clean stop
 
