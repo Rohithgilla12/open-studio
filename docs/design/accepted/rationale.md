@@ -227,7 +227,21 @@ When independent runners agree like this, it is a strong signal, so these points
 
 ## Implementation reconciliation
 
-*Placeholder. Recorded during implementation.*
+Step 0 ran on 2026-10-13 on an Apple M2 Max with macOS 27.0.1. The programs and full tables are in `Experiments/README.md`.
+
+**Confirmed: fragmented `.mov` survives `kill -9`.** An `AVAssetWriter` wrote 1920 × 1080 frames at 30 fps to a QuickTime movie with `movieFragmentInterval` = 1 s. A child process was killed with `SIGKILL` and the file was opened in a separate process.
+
+- Killed at 5.5 s: all three HEVC runs were playable, with one video track, a duration of 5.033 s, and 150 decoded frames. H.264 was playable at 5.000 s with 150 frames.
+- Killed at 3.3 s: all three HEVC runs read as 3.033 s with 90 frames. H.264 read as 3.000 s.
+- Control, with no fragment interval: all six runs failed to open (`AVFoundationErrorDomain -11829 "Cannot Open"`).
+
+The readable duration always lands on the last whole-second fragment boundary, so a crash loses at most one fragment interval of video. The design stands as written.
+
+**Accepted deviation: `HostTime` is built from `CGEvent.timestamp` as nanoseconds, not mach ticks.** A listen-only session tap compared each `mouseMoved` timestamp with `CLOCK_UPTIME_RAW` and `mach_absolute_time()` read in the callback (timebase 125/3). Read as nanoseconds, the timestamp trails `CLOCK_UPTIME_RAW` by a median of 0.22 to 0.29 ms across three runs (900 posted events, plus 27 real mouse events), with a p95 of at most 1.6 ms. Read as mach ticks, it lands about 17.9 million seconds in the future. So `CGEvent.timestamp` is nanoseconds on `CLOCK_UPTIME_RAW`. The recorder must take it as `HostTime(nanoseconds:)` directly. The sketch's `HostTime(machTicks: event.timestamp)` is wrong, and would skew events by a factor of 41.7. `init(machTicks:)` stays only for `mach_absolute_time()` and `SCStreamFrameInfo.displayTime`. Stamping in the callback is not needed, because the timestamp is on the right clock and is earlier than any callback stamp.
+
+**Confirmed: SCStream PTS is on the same clock.** Screen sample buffers carry a PTS with timescale 10⁹ that equals `SCStreamFrameInfo.displayTime` (mach ticks) converted to nanoseconds, exactly, on 12 of 12 buffers. It agrees with `CMClockGetHostTimeClock()` read on arrival to within 4 ms. Video PTS, CGEvent timestamps, and `CLOCK_UPTIME_RAW` are one clock in nanoseconds, which is the single clock the format assumes. The PTS is a display time and can be up to about 4 ms ahead of arrival.
+
+**Note for the recorder: macOS 27 deprecations.** `AVAssetWriterInput.expectsMediaDataInRealTime` and `AVAssetWriterInputPixelBufferAdaptor` are deprecated in the macOS 27 SDK. The deployment target is macOS 15, so the recorder needs the older API or an availability branch.
 
 ## Open questions and risks
 
