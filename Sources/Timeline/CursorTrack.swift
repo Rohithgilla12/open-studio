@@ -62,9 +62,8 @@ struct CursorTrack: Sendable {
         samples: [PointerSample], downs: [RecordingTime], frameCenter: Vector2, spring: Spring, settings: CursorSettings
     ) -> SpringTrack<Vector2> {
         var changes = samples.map { TargetChange(time: $0.time.seconds, target: Vector2($0.position), spring: spring) }
-        // The rapid spring takes over for `clickSpringLead` before each mouse-down, so the cursor lands on
-        // the click. Each lead gets a change at its start with the target then in effect, and every
-        // change inside a lead uses the rapid spring. The down sample itself switches back.
+        // The rapid spring takes over for `clickSpringLead` before each mouse-down so the cursor lands on
+        // the click; the down sample itself switches back.
         let leads = downs.map { down in
             Interval(start: max(down - settings.clickSpringLead, .zero).seconds, end: down.seconds)
         }
