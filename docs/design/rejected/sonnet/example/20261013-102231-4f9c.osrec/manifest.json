@@ -1,0 +1,50 @@
+{
+  "formatVersion": 1,
+  "id": "6f1c0b8e-3a52-4d7e-9c41-0b7d2e5a91f3",
+  "createdAt": "2026-10-13T10:22:31Z",
+  "producer": { "name": "osrec", "version": "0.1.0", "osVersion": "27.0" },
+  "status": "finalized",
+  "clock": { "kind": "host-time-ns", "origin": 482913745120000 },
+  "display": {
+    "displayID": 1,
+    "pointSize": { "width": 1512, "height": 982 },
+    "backingScale": 2,
+    "pixelSize": { "width": 3024, "height": 1964 },
+    "refreshRate": 120
+  },
+  "streams": {
+    "video": {
+      "file": "video/display.mp4",
+      "codec": "hevc",
+      "pixelSize": { "width": 3024, "height": 1964 },
+      "nominalFrameRate": 60,
+      "isVariableFrameRate": true
+    },
+    "microphone": {
+      "file": "audio/mic.mp4",
+      "codec": "aac",
+      "sampleRate": 48000,
+      "channels": 1,
+      "deviceName": "MacBook Pro Microphone"
+    },
+    "input": { "file": "input.ndjson", "schema": 1 },
+    "cursor": {
+      "changes": { "file": "cursor.ndjson", "schema": 1 },
+      "catalog": { "file": "cursors/catalog.ndjson", "schema": 1 },
+      "imageDirectory": "cursors"
+    }
+  },
+  "finalisation": {
+    "kind": "clean",
+    "duration": 5200000000,
+    "finalisedAt": "2026-10-13T10:22:37Z",
+    "stats": {
+      "videoFrames": 214,
+      "droppedVideoFrames": 0,
+      "inputEvents": 14,
+      "cursorImages": 2,
+      "discardedLines": 0
+    }
+  },
+  "warnings": []
+}

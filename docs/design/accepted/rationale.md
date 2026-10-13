@@ -163,7 +163,7 @@ Behind it sit ScreenCaptureKit, two writers, an event tap thread, cursor polling
 
 ## Synthesis decision
 
-Three runners (Opus, Fable, Sonnet) each sketched the brief independently in their own worktrees. A Fable cross-judge scored them against a six-point rubric: A (Opus) 26, C (Sonnet) 22, B (Fable) 18. I read all three end to end, and my pick was the same as the judge's, so this candidate (A) is the base.
+Three runners (Opus, Fable, Sonnet) each sketched the brief independently in their own worktrees. A Fable cross-judge scored them against a six-point rubric: A (Opus) 26, C (Sonnet) 22, B (Fable) 18. I read all three end to end, and my pick was the same as the judge's, so this candidate (A) is the base. The other two candidates are kept in [`../rejected/fable/`](../rejected/fable/) and [`../rejected/sonnet/`](../rejected/sonnet/).
 
 **Where all three agreed.** All three converged on the same shape:
 
