@@ -29,6 +29,8 @@ actor CaptureSink {
     private var screen: MovieWriter?
     private var microphone: MovieWriter?
     private var origin: HostTime?
+    private var lastFrame: (buffer: CMSampleBuffer, pts: HostTime)?
+    private var heartbeat: DispatchSourceTimer?
     private var firstFrameWaiter: CheckedContinuation<HostTime?, Never>?
     private var droppedSinceReport = 0
     private var lastDropReport: HostTime?
@@ -76,6 +78,34 @@ actor CaptureSink {
         }
         self.stream = stream
         self.output = output
+        startHeartbeat()
+    }
+
+    /// ScreenCaptureKit delivers a frame only when the display changes, and the cursor is hidden
+    /// from the capture, so a still screen produces no frames at all. A fragmented movie is
+    /// readable only up to its last fragment that holds a sample, so a crash during a still
+    /// stretch would lose everything after the last change. Re-appending the last frame once per
+    /// fragment interval keeps every fragment populated at the cost of one tiny P-frame per second.
+    private func startHeartbeat() {
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + Self.heartbeatInterval, repeating: Self.heartbeatInterval, leeway: .milliseconds(50))
+        timer.setEventHandler { [self] in assumeIsolated { $0.beat() } }
+        timer.resume()
+        heartbeat = timer
+    }
+
+    private static let heartbeatInterval: DispatchTimeInterval = .seconds(1)
+
+    private func beat() {
+        guard !stopping, let screen, let last = lastFrame else { return }
+        let now = HostTime.now()
+        guard now.duration(since: last.pts) >= .seconds(1) else { return }
+        do {
+            let copy = try CMSampleBuffer(copying: last.buffer, withNewTiming: [CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: now.cmTime, decodeTimeStamp: .invalid)])
+            if try screen.append(copy) { lastFrame = (copy, now) }
+        } catch {
+            report(.streamFailed(error.localizedDescription))
+        }
     }
 
     /// The PTS of the first complete frame, which both writers' sessions start at. Nil on timeout.
@@ -92,6 +122,7 @@ actor CaptureSink {
     /// Stops the stream and ends both writer sessions at `end`. Returns the screen duration.
     func finish(at end: HostTime) async throws(RecordingError) -> Duration {
         stopping = true
+        heartbeat?.cancel()
         if let stream {
             // A stream that already stopped on its own throws here; the writers still hold the frames.
             try? await stream.stopCapture()
@@ -113,6 +144,7 @@ actor CaptureSink {
     /// about to be removed.
     func abandon() async {
         stopping = true
+        heartbeat?.cancel()
         resolveFirstFrame(nil)
         if let stream { try? await stream.stopCapture() }
     }
@@ -154,6 +186,7 @@ actor CaptureSink {
         guard let origin else { return }
         do {
             if try screen.append(buffer) {
+                lastFrame = (buffer, pts)
                 reportDrops(at: pts, since: origin)
             } else {
                 droppedSinceReport += 1
