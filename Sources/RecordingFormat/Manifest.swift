@@ -12,8 +12,9 @@ public import Foundation
 /// display.
 public struct WireManifest: Sendable, Equatable {
     public var id: RecordingID
-    /// Encoded as ISO 8601 with milliseconds, so it round-trips at millisecond precision.
-    public var createdAt: Date
+    /// Rounded to whole milliseconds on init, the precision of its ISO 8601 encoding, so a manifest
+    /// decodes equal to the one encoded.
+    public let createdAt: Date
     public var recorder: WireRecorderInfo
     public var clock: WireClock
     public var display: WireDisplay
@@ -29,7 +30,7 @@ public struct WireManifest: Sendable, Equatable {
         warnings: [ManifestWarning] = [], status: ManifestStatus = .recording
     ) {
         self.id = id
-        self.createdAt = createdAt
+        self.createdAt = MillisecondTimestamp.rounded(createdAt)
         self.recorder = recorder
         self.clock = clock
         self.display = display
@@ -219,7 +220,33 @@ private enum WarningTag: String, Codable {
     case microphoneLost, inputTapReenabled
 }
 
-private let createdAtStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+/// ISO 8601 in UTC with exactly three fractional digits, such as `2026-10-13T06:22:33.412Z`.
+/// Foundation's fractional style truncates, so 33.412 held as 33.41199… would print as .411 and
+/// decode to a different date. Working in integer milliseconds keeps the round trip exact.
+private enum MillisecondTimestamp {
+    static func rounded(_ date: Date) -> Date { Date(timeIntervalSince1970: Double(milliseconds(date)) / 1000) }
+
+    static func format(_ date: Date) -> String {
+        let ms = milliseconds(date)
+        let seconds = ms >= 0 ? ms / 1000 : (ms - 999) / 1000
+        let whole = Date(timeIntervalSince1970: Double(seconds)).formatted(Date.ISO8601FormatStyle())
+        return whole.dropLast() + String(format: ".%03dZ", ms - seconds * 1000)
+    }
+
+    static func parse(_ string: String) -> Date? {
+        guard string.hasSuffix("Z") else { return nil }
+        let parts = string.dropLast().split(separator: ".", maxSplits: 1)
+        guard let first = parts.first, let whole = try? Date.ISO8601FormatStyle().parse(first + "Z") else { return nil }
+        var fraction: Int64 = 0
+        if parts.count == 2 {
+            guard parts[1].count == 3, let digits = Int64(parts[1]) else { return nil }
+            fraction = digits
+        }
+        return Date(timeIntervalSince1970: Double(Int64(whole.timeIntervalSince1970) * 1000 + fraction) / 1000)
+    }
+
+    private static func milliseconds(_ date: Date) -> Int64 { Int64((date.timeIntervalSince1970 * 1000).rounded()) }
+}
 
 extension WireManifest: Codable {
     public init(from decoder: any Decoder) throws {
@@ -232,7 +259,7 @@ extension WireManifest: Codable {
         }
 
         let createdAt = try c.decode(String.self, forKey: .createdAt)
-        guard let date = try? createdAtStyle.parse(createdAt) else {
+        guard let date = MillisecondTimestamp.parse(createdAt) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .createdAt, in: c, debugDescription: "not an ISO 8601 date: \(createdAt)")
         }
@@ -272,7 +299,7 @@ extension WireManifest: Codable {
         try c.encode(FormatVersion.identifier, forKey: .format)
         try c.encode(FormatVersion.current, forKey: .formatVersion)
         try c.encode(id, forKey: .id)
-        try c.encode(createdAt.formatted(createdAtStyle), forKey: .createdAt)
+        try c.encode(MillisecondTimestamp.format(createdAt), forKey: .createdAt)
         try c.encode(recorder, forKey: .recorder)
         var clockContainer = c.nestedContainer(keyedBy: ClockKey.self, forKey: .clock)
         try clockContainer.encode(WireClock.unit, forKey: .unit)
