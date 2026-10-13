@@ -256,6 +256,29 @@ The readable duration always lands on the last whole-second fragment boundary, s
 
 **Note for the recorder: macOS 27 deprecations.** `AVAssetWriterInput.expectsMediaDataInRealTime` and `AVAssetWriterInputPixelBufferAdaptor` are deprecated in the macOS 27 SDK. The deployment target is macOS 15, so the recorder needs the older API or an availability branch.
 
+### D3: Recording and osrec
+
+Measured on 2026-10-13 on the same M2 Max, macOS 27.0.1, from Ghostty with all three permissions granted. The recordings are scratch artifacts, not committed.
+
+**Accepted deviation: the classic `AVAssetWriterInput` path, no availability branch.** The macOS 27 SDK deprecates `expectsMediaDataInRealTime`, `isReadyForMoreMediaData`, and `append(_:)` for Swift only (`#if __swift__` in the header), in favour of an input receiver that exists only on macOS 27. With a macOS 15 deployment target the deprecation does not fire and the classic path is the only one available on every supported OS, so the writer has one path. ScreenCaptureKit hands over timed `CMSampleBuffer`s, which are appended directly, so no pixel buffer adaptor is involved. Revisit when the deployment target reaches 27.
+
+**Added: a heartbeat frame once per fragment interval.** ScreenCaptureKit sends a frame only when the display changes, and the cursor is hidden from the capture, so a still screen produces no frames at all. A crashed take of a still screen then read back as 1.000 s although its events ran to 4.9 s, because only the first fragment held a sample. The sink now re-appends the last complete frame with a fresh PTS whenever a second passes without one. The same scenario recovers at 4.925 s. A clean stop never needed this: `endSession(at:)` extends the last frame to the stop time.
+
+**Accepted deviation: `InputBuffer` instead of bare `Mutex` fields.** `Mutex` is non-copyable and its `withLock` sends the value, so two owners cannot share one and it cannot hold the non-Sendable CF types the tap needs. The producers and the writer share a small `InputBuffer<Element>` class (append and take-all), and the tap context holds its `CFMachPort` and `CFRunLoop` as plain fields on an `@unchecked Sendable` class, each written once on the tap thread before `start()`'s continuation resumes.
+
+**Accepted deviation: `flagsChanged` is not tapped.** The format has no event for it, and modifiers ride on each `key` event.
+
+**Accepted deviation: recovery keeps the screen duration as the take's duration.** With the heartbeat in place the screen duration tracks the crash time to within one fragment interval, so the example's "events after `durationMicros` stay in the file" still holds and nothing is derived from the event log.
+
+**Measured.** All through `osrec` with a scratch tool posting synthetic moves at 50 Hz (and a left click per second on an uncovered desktop spot) while logging `CLOCK_UPTIME_RAW` before each post:
+
+- 5 s take, 3456 × 2234 HEVC: manifest `finalized`, `durationReached`, screen.mov 5.000 s and playable, 121 frames (57 on a still screen), 158 event lines (150 moves, 3 down, 3 up, 1 state, 1 cursorImage), 1 cursor PNG (56 × 80 px, hotspot 10, 10). `NSCursor.currentSystem` works from an unbundled CLI.
+- Clock: 150 posted moves, 150 matched by pixel position. Recorded time (origin + t) minus posted time: min 0.022 ms, p50 0.067 ms, p95 1.400 ms, max 12.9 ms. The maximum is the mover's first post (HID warm-up) and the next largest, 6.2 ms, follows the first desktop click. The offset is positive because the HID system stamps the event after `post` returns.
+- Crash: `--duration 10 --abort-after 5` died by SIGABRT with the manifest at `recording`; `inspect` reported `crashed`, 102 frames, 4.925 s readable. `recover` finalized at 4.925 s with `recovered`; a second `recover` left `recording.json` and `events.ndjson` byte-identical (SHA-256 compared). The same test on the build before the heartbeat recovered 1.000 s.
+- Microphone: 3 s take with `--mic default` (MacBook Pro Microphone, 48 kHz, 1 channel): microphone.mov 2.999 s, playable, AAC through the same `SCStream`.
+
+**Found while verifying.** Posting synthetic events from a separate process reaches a session tap, but only while the tap is up: an earlier run that started the poster from a separate shell command missed the take entirely, which looked like a dead tap until a probe showed same-process posts arriving on both a secondary thread and the main thread. The scratch tool now spawns `osrec` itself.
+
 ## Open questions and risks
 
 - **CGEvent timestamp units.** Are they mach ticks or nanoseconds on Apple Silicon? The sketch assumes ticks and converts with `mach_timebase_info`. The 5 s recording should check the event timestamp against `mach_absolute_time()` taken in the callback, and fall back to stamping in the callback if they disagree.
