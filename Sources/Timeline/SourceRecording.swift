@@ -16,7 +16,7 @@ public struct SourceRecording: Sendable {
 
     /// Every pointer position: the t = 0 state, moves, drags, downs, and ups. Sorted by time.
     public let pointer: [PointerSample]
-    /// Button transitions. Both downs and ups feed auto-zoom (each up extends the click's window by the
+    /// Button transitions, on any display. Both downs and ups on the recorded display feed auto-zoom (each up extends the click's window by the
     /// press duration, matching the observed behaviour). Sorted by time.
     public let buttons: [ButtonEvent]
     /// Times of key presses, sorted. Key codes are not exposed; nothing in Timeline needs them.

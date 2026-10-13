@@ -57,7 +57,9 @@ public enum ZoomTrackError: Error, Sendable, Equatable {
 public enum AutoZoom {
     /// The automatic segments for a recording, sorted and non-overlapping.
     public static func segments(for source: SourceRecording, settings: AutoZoomSettings = AutoZoomSettings()) -> [ZoomSegment] {
-        segments(clickTimes: source.buttons.map(\.time), duration: source.duration, settings: settings)
+        segments(
+            clickTimes: source.buttons.filter { source.frameSize.contains($0.position) }.map(\.time),
+            duration: source.duration, settings: settings)
     }
 
     public static func track(for source: SourceRecording, settings: AutoZoomSettings = AutoZoomSettings()) -> ZoomTrack {

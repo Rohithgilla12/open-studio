@@ -82,6 +82,12 @@ public struct Size: Sendable, Hashable, Codable {
         self.width = width
         self.height = height
     }
+
+    /// Whether a point lies on a frame of this size. The pointer is recorded on every display, so
+    /// points off the recorded one have coordinates outside it.
+    public func contains(_ point: Point) -> Bool {
+        point.x >= 0 && point.y >= 0 && point.x < width && point.y < height
+    }
 }
 
 public struct Rect: Sendable, Hashable, Codable {

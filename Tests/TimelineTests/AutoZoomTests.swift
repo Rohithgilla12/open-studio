@@ -37,6 +37,13 @@ struct AutoZoomSpec {
         #expect(segment.focus == .followPointer)
     }
 
+    @Test func clicksOnAnotherDisplayStartNoZoom() throws {
+        let source = try Synthetic.source(
+            duration: 20, pointer: [(0, 300, 200), (1.5, -1500, 400), (5.5, 300, 200)], clicks: [2, 6])
+        let ranges = AutoZoom.segments(for: source).map { ($0.range.start.seconds, $0.range.end.seconds) }
+        expect(ranges, [(5.7, 8.58)])
+    }
+
     @Test func windowsWithinMergeGapMerge() {
         expect(ranges(clicks: [5, 10], duration: 20), [(4.7, 12.5)])
     }

@@ -26,9 +26,11 @@ swift test
 ```sh
 .build/release/osrec permissions        # exits 1 and names what's missing
 .build/release/osrec displays           # lists displays and microphones
-.build/release/osrec record --duration 5 --mic default --out .
+.build/release/osrec record --display <id> --duration 5 --mic default --out .
 .build/release/osrec inspect <dir>.osrec --timeline
 ```
+
+Without `--display`, `osrec` records the main display. Auto-zoom only reacts to clicks on the recorded display.
 
 To stop a recording early, press Ctrl-C. If the recorder was killed instead, run `osrec recover <dir>.osrec` to finish the take. It's safe to run it more than once.
 
@@ -40,7 +42,8 @@ A take is a `.osrec` directory:
 
 ```
 recording.json     manifest, replaced atomically; the commit point
-screen.mov         fragmented QuickTime, 1 s fragments, optional mic track
+screen.mov         fragmented QuickTime, 1 s fragments
+microphone.mov     fragmented QuickTime, only when recorded with --mic
 events.ndjson      append-only input and cursor events
 cursors/<id>.png   cursor images, named by content hash
 .lock              held while recording

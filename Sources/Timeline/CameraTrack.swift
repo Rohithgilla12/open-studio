@@ -55,7 +55,8 @@ struct CameraTrack: Sendable {
         center = SpringTrack(initial: frameCenter, changes: centerChanges, rescaleShortIntervals: settings.rescaleShortIntervals)
     }
 
-    /// Samples inside `[start, end)`, led by the sample in effect at `start` re-stamped to `start`.
+    /// On-frame samples inside `[start, end)`, led by the sample in effect at `start` re-stamped to
+    /// `start`. While the pointer is on another display the camera holds its last on-frame target.
     static func samples(of source: SourceRecording, from start: RecordingTime, until end: RecordingTime) -> [PointerSample] {
         let pointer = source.pointer
         guard !pointer.isEmpty else { return [] }
@@ -69,7 +70,7 @@ struct CameraTrack: Sendable {
             if pointer[index].time > start { result.append(pointer[index]) }
             index += 1
         }
-        return result
+        return result.filter { source.frameSize.contains($0.position) }
     }
 
     /// Centers for which a viewport of `frame / scale` stays inside the frame.

@@ -133,8 +133,17 @@ struct CameraSpec {
         #expect(camera.center.knots.count > 3, "zoom-in, at least two groups, zoom-out")
         let early = camera.state(at: 2.9).center.x
         let late = camera.state(at: 4.4).center.x
-        #expect(early.isApproximately(480, within: 5), "1.2 s into a 1.55 s settle")
+        #expect(early.isApproximately(480, within: 5), "settled on the first group")
         #expect(late > early + 400, "the pointer ran 1000 px to the right and the camera followed")
+    }
+
+    @Test func pointerOnAnotherDisplayDoesNotMoveTheCamera() throws {
+        let stayed = Self.camera(try Self.restingSource())
+        let left = Self.camera(try Synthetic.source(
+            duration: 10, frame: Self.frame, pointer: [(0, 300, 200), (3.0, -800, 200), (3.2, -1600, 900)], clicks: [2]))
+        for t in stride(from: 0.0, through: 10, by: 1.0 / 60) {
+            #expect(left.state(at: t) == stayed.state(at: t), "at \(t) s")
+        }
     }
 
     @Test func leadInStartsTheZoomBeforeTheSegment() throws {
