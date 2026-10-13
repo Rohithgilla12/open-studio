@@ -12,7 +12,7 @@ enum ReferenceSpring {
         var t = 0.0
         var index = 0
         var target = initial
-        var spring = changes.first?.spring ?? .camera
+        var spring = changes.first?.spring ?? .screenFocused
         var out: [(Double, Double, Double)] = []
         while t <= end {
             while index < changes.count, changes[index].time <= t + dt / 2 {
@@ -33,7 +33,7 @@ struct SpringSpec {
     static let critical = Spring(stiffness: 100, damping: 20, mass: 1)
     static let overdamped = Spring(stiffness: 100, damping: 40, mass: 1)
 
-    @Test(arguments: [Spring.camera, .cursorSmooth, .cursorMedium, .cursorRapid, critical, overdamped])
+    @Test(arguments: [Spring.screenFocused, .screenSmooth, .cursorSmooth, .cursorMedium, .cursorRapid, critical, overdamped])
     func closedFormMatchesFineIntegration(spring: Spring) {
         let changes = [TargetChange(time: 0, target: 100.0, spring: spring)]
         let track = SpringTrack(initial: 0, changes: changes, rescaleShortIntervals: false)
@@ -52,7 +52,7 @@ struct SpringSpec {
     }
 
     @Test func regimesAreClassifiedFromTheDampingRatio() {
-        #expect(SpringResponse(.camera).regime.name == "underdamped")
+        #expect(SpringResponse(.screenFocused).regime.name == "underdamped")
         #expect(SpringResponse(Self.critical).regime.name == "critical")
         #expect(SpringResponse(Self.overdamped).regime.name == "overdamped")
         #expect(SpringResponse(Spring(stiffness: 100, damping: 20 * (1 + 5e-7), mass: 1)).regime.name == "critical")
@@ -61,7 +61,7 @@ struct SpringSpec {
 
     @Test func chainOfTargetChangesMatchesFineIntegration() {
         let changes = [
-            TargetChange(time: 0, target: 100.0, spring: .camera),
+            TargetChange(time: 0, target: 100.0, spring: .screenFocused),
             TargetChange(time: 0.3, target: -40.0, spring: Self.overdamped),
             TargetChange(time: 0.45, target: 250.0, spring: .cursorRapid),
             TargetChange(time: 1.2, target: 0.0, spring: Self.critical),
@@ -78,7 +78,7 @@ struct SpringSpec {
     }
 
     @Test func positionAndVelocityAreContinuousAcrossKnots() {
-        let changes = (1...20).map { TargetChange(time: Double($0) * 0.137, target: Double($0 % 3) * 100, spring: .camera) }
+        let changes = (1...20).map { TargetChange(time: Double($0) * 0.137, target: Double($0 % 3) * 100, spring: .screenFocused) }
         let track = SpringTrack(initial: 0, changes: changes, rescaleShortIntervals: true)
         for knot in track.knots.dropFirst() {
             let before = track.evaluate(at: knot.time - 1e-9)
@@ -90,30 +90,30 @@ struct SpringSpec {
 
     @Test func shortIntervalRescaleArrivesBeforeTheNextChange() {
         let changes = [
-            TargetChange(time: 0, target: 100.0, spring: .camera),
-            TargetChange(time: 0.2, target: 0.0, spring: .camera),
+            TargetChange(time: 0, target: 100.0, spring: .screenFocused),
+            TargetChange(time: 0.2, target: 0.0, spring: .screenFocused),
         ]
         let rescaled = SpringTrack(initial: 0, changes: changes, rescaleShortIntervals: true)
         let plain = SpringTrack(initial: 0, changes: changes, rescaleShortIntervals: false)
         #expect(abs(rescaled.evaluate(at: 0.2 - 1e-6).position - 100) < 1)
         #expect(abs(plain.evaluate(at: 0.2 - 1e-6).position - 100) > 10)
-        #expect(rescaled.knots[0].response == SpringResponse(Spring.camera.rescaled(toSettleWithin: 0.2)))
+        #expect(rescaled.knots[0].response == SpringResponse(Spring.screenFocused.rescaled(toSettleWithin: 0.2)))
         #expect(rescaled.knots[0].response != plain.knots[0].response)
         #expect(rescaled.knots[1].response == plain.knots[1].response, "the last interval is open-ended and not rescaled")
     }
 
     @Test func rescalePreservesTheDampingRatio() {
-        let scaled = Spring.camera.rescaled(toSettleWithin: 0.1)
-        #expect(abs(scaled.dampingRatio - Spring.camera.dampingRatio) < 1e-12)
+        let scaled = Spring.screenFocused.rescaled(toSettleWithin: 0.1)
+        #expect(abs(scaled.dampingRatio - Spring.screenFocused.dampingRatio) < 1e-12)
         #expect(abs(scaled.settleTime() - 0.1) < 1e-9)
-        #expect(Spring.camera.rescaled(toSettleWithin: 100) == .camera)
+        #expect(Spring.screenFocused.rescaled(toSettleWithin: 100) == .screenFocused)
     }
 
     @Test func changesAtTheSameTimeCollapseToTheLast() {
         let changes = [
-            TargetChange(time: 0.5, target: 10.0, spring: .camera),
-            TargetChange(time: 0.5, target: 20.0, spring: .camera),
-            TargetChange(time: 0.5, target: 30.0, spring: .camera),
+            TargetChange(time: 0.5, target: 10.0, spring: .screenFocused),
+            TargetChange(time: 0.5, target: 20.0, spring: .screenFocused),
+            TargetChange(time: 0.5, target: 30.0, spring: .screenFocused),
         ]
         let track = SpringTrack(initial: 0, changes: changes, rescaleShortIntervals: true)
         #expect(track.knots.map(\.time) == [0, 0.5])
@@ -122,7 +122,7 @@ struct SpringSpec {
     }
 
     @Test func aChangeAtTimeZeroReplacesTheRestKnot() {
-        let track = SpringTrack(initial: 0, changes: [TargetChange(time: 0, target: 50.0, spring: .camera)], rescaleShortIntervals: false)
+        let track = SpringTrack(initial: 0, changes: [TargetChange(time: 0, target: 50.0, spring: .screenFocused)], rescaleShortIntervals: false)
         #expect(track.knots.count == 1)
         #expect(track.evaluate(at: 0).position == 0)
         #expect(track.evaluate(at: 0).velocity == 0)
@@ -130,7 +130,7 @@ struct SpringSpec {
     }
 
     @Test func queriesBeforeTheFirstKnotClampToRest() {
-        let track = SpringTrack(initial: 7, changes: [TargetChange(time: 1, target: 50.0, spring: .camera)], rescaleShortIntervals: false)
+        let track = SpringTrack(initial: 7, changes: [TargetChange(time: 1, target: 50.0, spring: .screenFocused)], rescaleShortIntervals: false)
         #expect(track.evaluate(at: -3).position == 7)
         #expect(track.evaluate(at: 0.999).position == 7)
         #expect(track.evaluate(at: -3).velocity == 0)

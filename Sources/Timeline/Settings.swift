@@ -12,7 +12,11 @@ public struct Spring: Sendable, Hashable, Codable {
         self.mass = mass
     }
 
-    public static let camera = Spring(stiffness: 125, damping: 12, mass: 1.5)
+    /// The observed product's "Focused" screen animation. Damping ratio about 0.84, so the
+    /// zoom-out barely overshoots and settles in about 0.7 s, inside the 800 ms end margin.
+    public static let screenFocused = Spring(stiffness: 250, damping: 40, mass: 2.25)
+    /// The observed product's "Smooth" screen animation. Overdamped, so it never overshoots.
+    public static let screenSmooth = Spring(stiffness: 170, damping: 50, mass: 3)
     public static let cursorSmooth = Spring(stiffness: 470, damping: 70, mass: 3)
     public static let cursorMedium = Spring(stiffness: 340, damping: 60, mass: 3)
     public static let cursorRapid = Spring(stiffness: 530, damping: 40, mass: 1)
@@ -53,7 +57,7 @@ public struct AutoZoomSettings: Sendable, Hashable, Codable {
 }
 
 public struct CameraSettings: Sendable, Hashable, Codable {
-    public var spring: Spring = .camera
+    public var spring: Spring = .screenFocused
     /// Start zooming in this long before a segment begins. nil disables the lead-in.
     public var leadIn: RecordingTime? = nil
     /// The lead-in the observed product uses when the option is on.

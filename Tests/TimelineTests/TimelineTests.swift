@@ -21,7 +21,7 @@ struct TimelineSpec {
 
     @Test func defaultSettingsMatchTheTeardown() {
         let settings = TimelineSettings.default
-        #expect(settings.camera.spring == Spring(stiffness: 125, damping: 12, mass: 1.5))
+        #expect(settings.camera.spring == Spring(stiffness: 250, damping: 40, mass: 2.25))
         #expect(settings.camera.leadIn == nil)
         #expect(settings.cursor.smoothing == .medium)
         #expect(CursorSmoothing.smooth.spring == Spring(stiffness: 470, damping: 70, mass: 3))

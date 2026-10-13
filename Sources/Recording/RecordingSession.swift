@@ -154,11 +154,15 @@ public actor RecordingSession {
         let wire: ManifestWarning? = switch warning {
         case .microphoneLost(let at, let message): .microphoneLost(at: MediaTime(at), message: message)
         case .inputTapReenabled(let at): .inputTapReenabled(at: MediaTime(at))
-        case .framesDropped: nil
+        case .framesDropped, .manifestWriteFailed: nil
         }
         guard let wire else { return }
         manifest.warnings.append(wire)
-        try? manifest.write(to: layout)
+        do {
+            try manifest.write(to: layout)
+        } catch {
+            continuation.yield(.warning(.manifestWriteFailed("\(error)")))
+        }
     }
 
     private func finalize(_ reason: StopReason) async -> FinishedRecording {

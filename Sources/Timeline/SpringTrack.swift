@@ -34,7 +34,7 @@ struct SpringTrack<Value: SpringValue>: Sendable {
             }
         }
 
-        let restSpring = distinct.first?.spring ?? .camera
+        let restSpring = distinct.first?.spring ?? .screenFocused
         var current = Knot(time: 0, target: initial, position: initial, velocity: .zero, response: SpringResponse(restSpring))
         var knots = [current]
         knots.reserveCapacity(distinct.count + 1)

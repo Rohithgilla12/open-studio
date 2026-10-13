@@ -43,6 +43,9 @@ public enum RecordingWarning: Sendable, Equatable {
     /// The system disabled the event tap and the recorder re-enabled it. Input in the gap is missing.
     case inputTapReenabled(at: Duration)
     case framesDropped(count: Int)
+    /// A mid-take warning could not be saved to the manifest. The final manifest at stop still
+    /// carries it, but a crash before then loses it.
+    case manifestWriteFailed(String)
 }
 
 public enum RecordingError: Error, Sendable, Equatable, CustomStringConvertible {
