@@ -1,0 +1,41 @@
+{
+  "clock" : {
+    "origin" : "first-screen-frame",
+    "originHostTimeNanos" : 100000000000,
+    "unit" : "microseconds"
+  },
+  "createdAt" : "2026-10-13T09:00:00.000Z",
+  "display" : {
+    "displayID" : 1,
+    "name" : "Fixture Display",
+    "pointFrame" : [
+      0,
+      0,
+      1920,
+      1080
+    ],
+    "refreshRate" : 60
+  },
+  "durationMicros" : 12000000,
+  "format" : "open-studio.recording",
+  "formatVersion" : 1,
+  "id" : "0B6F1A2C-5D3E-4F70-8A91-B2C3D4E5F601",
+  "recorder" : {
+    "name" : "fixture",
+    "osVersion" : "27.0",
+    "version" : "0.1.0"
+  },
+  "screen" : {
+    "codec" : "hevc",
+    "maxFrameRate" : 60,
+    "pixelHeight" : 1080,
+    "pixelWidth" : 1920
+  },
+  "status" : "finalized",
+  "termination" : {
+    "reason" : "userStopped"
+  },
+  "warnings" : [
+
+  ]
+}
