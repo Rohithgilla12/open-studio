@@ -284,7 +284,11 @@ enum ClockCheck {
         var offsetsMs: [Double] = []
         var unmatched = 0
         for move in posted {
-            let pixel = WirePoint(x: (move.point.x - frame.x) * scale.width, y: (move.point.y - frame.y) * scale.height)
+            // The HID system stores an event's location as Float32 points, so a fractional post only
+            // matches the recorded pixel after the same rounding.
+            let x = Double(Float(move.point.x))
+            let y = Double(Float(move.point.y))
+            let pixel = WirePoint(x: (x - frame.x) * scale.width, y: (y - frame.y) * scale.height)
             guard let candidates = movesByPosition[pixel], !candidates.isEmpty else {
                 unmatched += 1
                 continue
