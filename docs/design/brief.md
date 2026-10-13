@@ -2,9 +2,9 @@
 
 ## Goal
 
-open-studio is a clean-room, open-source take on the recording-plus-auto-zoom workflow described in `docs/20261013-screen-studio-teardown.md`. Read that document first. It is the grounding for this design.
+open-studio is a clean-room, open-source take on the recording-plus-auto-zoom workflow of tools such as Screen Studio. The behaviour it matches comes from private teardown notes that are not published. Every constant this design depends on is listed under Constraints.
 
-**Decision (2026-10-13):** the app is fully native Swift (SwiftUI, AVFoundation, ScreenCaptureKit, and Core Image or Metal). There is no Electron and no TypeScript. The teardown's proposal section recommended Electron. That recommendation is superseded.
+**Decision (2026-10-13):** the app is fully native Swift (SwiftUI, AVFoundation, ScreenCaptureKit, and Core Image or Metal). There is no Electron and no TypeScript. An earlier proposal recommended Electron. That recommendation is superseded.
 
 This first unit ships two Swift modules, and the on-disk contract between recording and editing. The editor UI, renderer, export, and share links come later. The design must not block them.
 
