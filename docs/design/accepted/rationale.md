@@ -256,6 +256,8 @@ The readable duration always lands on the last whole-second fragment boundary, s
 
 **Note for the recorder: macOS 27 deprecations.** `AVAssetWriterInput.expectsMediaDataInRealTime` and `AVAssetWriterInputPixelBufferAdaptor` are deprecated in the macOS 27 SDK. The deployment target is macOS 15, so the recorder needs the older API or an availability branch.
 
+### D2: Timeline
+
 **Timeline deviations from the sketch.** Implemented on 2026-10-13 against the frozen `RecordingFormat`. Each is covered by a test in `Tests/TimelineTests/`.
 
 - **Grafts 1 and 2 as written.** `Timeline.init(source:zooms: ZoomTrack, settings:)` takes a `ZoomTrack` built by `ZoomTrack(validating:) throws(ZoomTrackError)`, which sorts and rejects overlaps and scales below 1. `Timeline.frame(at:) -> FrameState` is the only query; there is no `camera(at:)` or `cursor(at:)`. `AutoZoom.track(for:)` wraps the generated segments without a `try`, because generation cannot overlap.
@@ -268,16 +270,39 @@ The readable duration always lands on the last whole-second fragment boundary, s
 - **Generated ids are the range bytes.** The segment id is the 16 bytes of (start, end) in little-endian microseconds read as a UUID, not a hash, so equal ranges in different recordings share an id.
 - **Measured.** On an Apple M2 Max (12 cores, load average 3 to 6 during the runs), a synthetic 30-minute recording with 216 516 pointer samples at 120 Hz, 258 clicks (257 segments), and a typing burst a minute builds its `Timeline` in 10.2 to 10.8 ms in release (six runs) and answers a random `frame(at:)` in 0.31 to 0.36 µs on average over 1000 queries. Knots: 515 scale, 942 center, 57 164 cursor, about 5 MiB. The cursor table bounds both numbers: build is one closed-form step per knot, and a query is three binary searches, the largest over 57 k knots, plus two `exp` and two `sin`/`cos` pairs. Thinning bounds the knot count by path length over 10 px plus rest points and clicks, not by sample rate.
 
+### D3: Recording and osrec
+
+Measured on 2026-10-13 on the same M2 Max, macOS 27.0.1, from Ghostty with all three permissions granted. The recordings are scratch artifacts, not committed.
+
+**Accepted deviation: the classic `AVAssetWriterInput` path, no availability branch.** The macOS 27 SDK deprecates `expectsMediaDataInRealTime`, `isReadyForMoreMediaData`, and `append(_:)` for Swift only (`#if __swift__` in the header), in favour of an input receiver that exists only on macOS 27. With a macOS 15 deployment target the deprecation does not fire and the classic path is the only one available on every supported OS, so the writer has one path. ScreenCaptureKit hands over timed `CMSampleBuffer`s, which are appended directly, so no pixel buffer adaptor is involved. Revisit when the deployment target reaches 27.
+
+**Added: a heartbeat frame once per fragment interval.** ScreenCaptureKit sends a frame only when the display changes, and the cursor is hidden from the capture, so a still screen produces no frames at all. A crashed take of a still screen then read back as 1.000 s although its events ran to 4.9 s, because only the first fragment held a sample. The sink now re-appends the last complete frame with a fresh PTS whenever a second passes without one. The same scenario recovers at 4.925 s. A clean stop never needed this: `endSession(at:)` extends the last frame to the stop time.
+
+**Accepted deviation: `InputBuffer` instead of bare `Mutex` fields.** `Mutex` is non-copyable and its `withLock` sends the value, so two owners cannot share one and it cannot hold the non-Sendable CF types the tap needs. The producers and the writer share a small `InputBuffer<Element>` class (append and take-all), and the tap context holds its `CFMachPort` and `CFRunLoop` as plain fields on an `@unchecked Sendable` class, each written once on the tap thread before `start()`'s continuation resumes.
+
+**Accepted deviation: `flagsChanged` is not tapped.** The format has no event for it, and modifiers ride on each `key` event.
+
+**Accepted deviation: recovery keeps the screen duration as the take's duration.** With the heartbeat in place the screen duration tracks the crash time to within one fragment interval, so the example's "events after `durationMicros` stay in the file" still holds and nothing is derived from the event log.
+
+**Measured.** All through `osrec` with a scratch tool posting synthetic moves at 50 Hz (and a left click per second on an uncovered desktop spot) while logging `CLOCK_UPTIME_RAW` before each post:
+
+- 5 s take, 3456 × 2234 HEVC: manifest `finalized`, `durationReached`, screen.mov 5.000 s and playable, 121 frames (57 on a still screen), 158 event lines (150 moves, 3 down, 3 up, 1 state, 1 cursorImage), 1 cursor PNG (56 × 80 px, hotspot 10, 10). `NSCursor.currentSystem` works from an unbundled CLI.
+- Clock: 150 posted moves, 150 matched by pixel position. Recorded time (origin + t) minus posted time: min 0.022 ms, p50 0.067 ms, p95 1.400 ms, max 12.9 ms. The maximum is the mover's first post (HID warm-up) and the next largest, 6.2 ms, follows the first desktop click. The offset is positive because the HID system stamps the event after `post` returns.
+- Crash: `--duration 10 --abort-after 5` died by SIGABRT with the manifest at `recording`; `inspect` reported `crashed`, 102 frames, 4.925 s readable. `recover` finalized at 4.925 s with `recovered`; a second `recover` left `recording.json` and `events.ndjson` byte-identical (SHA-256 compared). The same test on the build before the heartbeat recovered 1.000 s.
+- Microphone: 3 s take with `--mic default` (MacBook Pro Microphone, 48 kHz, 1 channel): microphone.mov 2.999 s, playable, AAC through the same `SCStream`.
+
+**Found while verifying.** Posting synthetic events from a separate process reaches a session tap, but only while the tap is up: an earlier run that started the poster from a separate shell command missed the take entirely, which looked like a dead tap until a probe showed same-process posts arriving on both a secondary thread and the main thread. The scratch tool now spawns `osrec` itself.
+
 ## Open questions and risks
 
-- **CGEvent timestamp units.** Are they mach ticks or nanoseconds on Apple Silicon? The sketch assumes ticks and converts with `mach_timebase_info`. The 5 s recording should check the event timestamp against `mach_absolute_time()` taken in the callback, and fall back to stamping in the callback if they disagree.
-- **Crash recovery of the fragmented `.mov`.** Does it really read to the last fragment after `kill -9` on macOS 15 and 27? `--abort-after` exists to prove this before anything builds on it.
+- **Resolved: CGEvent timestamp units.** Nanoseconds on `CLOCK_UPTIME_RAW`, measured by D1 and confirmed by D3's clock check. See Implementation reconciliation.
+- **Resolved on macOS 27: crash recovery of the fragmented `.mov`.** It reads to the last whole fragment after `kill -9` (D1) and after `abort()` with the heartbeat frame (D3). It is not yet measured on macOS 15.
 - **Shake and thinning thresholds.** Are the 500 px and 10 px values in screen pixels, as assumed here, or in points? On a 2× display that doubles their effective size.
 - **Default cursor preset.** Should it be Medium (assumed here) or Smooth?
 - **Clock for edits.** When trims and speed changes arrive, should springs run in source time, as now, or in output time, so the camera stays continuous across a cut? If output time, `Timeline.init` gains a time map, and the knot design accommodates it.
 - **Distribution.** Will the app be sandboxed for the App Store, or Developer ID only? Listen-only taps and ScreenCaptureKit work in both, but the choice changes entitlements and the library location used by recovery.
 - **Sequoia-style re-consent prompts.** Recurring "allow screen recording" prompts may push towards `SCContentSharingPicker` for display selection. Should the app adopt it now or later?
-- **`NSCursor.currentSystem`.** It is documented loosely. Does it keep returning other apps' cursors from a CLI with no key window? The 5 s recording verifies this.
+- **Resolved: `NSCursor.currentSystem`.** It works from an unbundled CLI (D3's 5 s take captured a cursor image).
 
 ## Next implementation step
 
