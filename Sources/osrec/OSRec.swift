@@ -172,6 +172,14 @@ struct Inspect: AsyncParsableCommand {
         name: .customLong("clock-log"),
         help: "Sidecar log of posted moves (`<host-ns> <x> <y>` per line, global points) to compare against recorded times.")
     var clockLog: String?
+    @Flag(help: "Load the recording through Timeline and print its buttons and auto-zoom segments.") var timeline = false
+    @Flag(
+        name: .customLong("check-determinism"),
+        help: "Evaluate every frame at the recording's frame rate in four orders. Exit 1 unless all are bit-identical. Implies --timeline.")
+    var checkDeterminism = false
+    @Option(
+        help: "Print camera and cursor per sample over <start-ms>:<end-ms>:<step-ms>. Implies --timeline.")
+    var frames: FrameGrid?
 
     func run() async throws {
         let url = URL(filePath: directory)
@@ -211,6 +219,12 @@ struct Inspect: AsyncParsableCommand {
 
         if let clockLog {
             try ClockCheck.report(logPath: clockLog, manifest: manifest, events: events.events)
+        }
+
+        if timeline || checkDeterminism || frames != nil {
+            let options = TimelineInspection.Options(
+                checkDeterminism: checkDeterminism, frames: frames, frameRate: manifest.screen.maxFrameRate)
+            guard try await TimelineInspection.run(directory: url, options: options) else { throw ExitCode(1) }
         }
     }
 }
