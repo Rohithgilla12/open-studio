@@ -16,6 +16,11 @@ enum Fixture {
             .appending(path: "Fixtures/recordings/\(name)", directoryHint: .isDirectory)
     }
 
+    static func timeline(_ name: String = fiveClicks, settings: TimelineSettings = .default) throws -> Timeline {
+        let source = try SourceRecording.load(from: directory(name))
+        return Timeline(source: source, zooms: AutoZoom.track(for: source, settings: settings.autoZoom), settings: settings)
+    }
+
     struct Generated {
         var manifest: Data
         var events: Data
