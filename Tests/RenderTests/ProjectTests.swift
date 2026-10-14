@@ -157,11 +157,33 @@ struct ProjectSpec {
         }
     }
 
-    @Test func projectFileFromAnotherTakeIsIgnored() throws {
-        // Catches: a project.json copied between takes applying the wrong zooms.
+    @Test func styleOutOfRangeIsUnreadable() throws {
         let take = try Fixture.metadataOnlyTake()
         defer { try? FileManager.default.removeItem(at: take) }
-        try writeProjectJSON(take) { $0["recordingID"] = UUID().uuidString }
+        try writeProjectJSON(take) { object in
+            var style = object["style"] as! [String: Any]
+            style["padding"] = 0.6
+            object["style"] = style
+        }
+        let error = #expect(throws: ProjectError.self) { try Project.open(take) }
+        guard case .projectUnreadable(let detail) = try #require(error) else {
+            Issue.record("expected projectUnreadable")
+            return
+        }
+        #expect(detail.contains("padding"))
+    }
+
+    @Test func projectFileFromAnotherTakeIsIgnored() throws {
+        // Catches: a project.json copied between takes applying the wrong zooms, or being
+        // validated against this take and refusing to open it.
+        let take = try Fixture.metadataOnlyTake()
+        defer { try? FileManager.default.removeItem(at: take) }
+        try writeProjectJSON(take) { object in
+            object["recordingID"] = UUID().uuidString
+            var zooms = object["zooms"] as! [[String: Any]]
+            zooms[1]["range"] = ["start": ["microseconds": 5_000_000], "end": ["microseconds": 30_000_000]]
+            object["zooms"] = zooms
+        }
         let bytes = try Data(contentsOf: ProjectFile.url(in: take))
         let project = try Project.open(take)
         #expect(project.origin == .generated)

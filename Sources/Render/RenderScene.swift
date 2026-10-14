@@ -53,9 +53,7 @@ final class RenderScene: Sendable {
 }
 
 /// GPU-side resources that depend on (style, canvas, source) but not on time. Built once per key.
-///
-/// `@unchecked` because `CIImage` is immutable and documented thread-safe but not marked Sendable.
-final class SceneAssets: @unchecked Sendable {
+final class SceneAssets: Sendable {
     struct Key: Sendable, Hashable {
         let style: Style
         let canvas: PixelSize

@@ -31,6 +31,13 @@ struct DecodingSpec {
         #expect(throws: ZoomTrackError.scaleBelowOne(a.id)) { try decoder.decode(ZoomTrack.self, from: json) }
     }
 
+    @Test func zoomTrackWithDuplicateIDsFailsToDecode() throws {
+        let id = UUID()
+        let a = ZoomSegment(id: id, range: TimeRange(start: .seconds(1), end: .seconds(2))!, scale: 2, focus: .followPointer)
+        let b = ZoomSegment(id: id, range: TimeRange(start: .seconds(3), end: .seconds(4))!, scale: 2, focus: .followPointer)
+        #expect(throws: ZoomTrackError.duplicateID(id)) { try decoder.decode(ZoomTrack.self, from: try encoder.encode([a, b])) }
+    }
+
     @Test func zoomTrackRoundTripsAsABareArray() throws {
         let track = try ZoomTrack(validating: [
             ZoomSegment(range: TimeRange(start: .seconds(5), end: .seconds(7))!, scale: 1.5, focus: .fixed(x: 0.2, y: 0.8)),

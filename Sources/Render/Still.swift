@@ -14,10 +14,10 @@ public enum Still {
         let image = try await cgImage(project, at: t)
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
-            throw .readerFailed("could not create a PNG destination")
+            throw .writerFailed("could not create a PNG destination")
         }
         CGImageDestinationAddImage(destination, image, nil)
-        guard CGImageDestinationFinalize(destination) else { throw .readerFailed("could not encode the PNG") }
+        guard CGImageDestinationFinalize(destination) else { throw .writerFailed("could not encode the PNG") }
         return data as Data
     }
 
@@ -34,16 +34,14 @@ public enum Still {
         generator.videoComposition = movie.videoComposition(scene: scene, frameRate: project.edits.format.frameRate)
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
+        // The instruction covers [0, duration), so a request at the duration itself is moved
+        // inside it by one frame.
+        let last = RecordingTime(movie.duration) - .seconds(1 / Double(project.edits.format.frameRate.rawValue))
+        let time = min(max(t, .zero), max(last, .zero))
         do {
-            return try await generator.image(at: t.clamped(to: project.source.duration).cmTime).image
+            return try await generator.image(at: time.cmTime).image
         } catch {
             throw .readerFailed(error.localizedDescription)
         }
-    }
-}
-
-extension RecordingTime {
-    func clamped(to duration: RecordingTime) -> RecordingTime {
-        min(max(self, .zero), duration)
     }
 }

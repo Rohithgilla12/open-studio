@@ -43,7 +43,22 @@ struct ExportSpec {
         #expect(try Data(contentsOf: destination).count == Int(report.bytes))
     }
 
-    @Test func previewCompositionAndExportProduceIdenticalPixels() async throws {
+    @Test func cancellationRemovesThePartialFile() async throws {
+        let take = try await Fixture.take(color: (0, 255, 0), seconds: 6)
+        defer { try? FileManager.default.removeItem(at: take) }
+        var project = try Project.open(take)
+        project.edits.format = OutputFormat(size: .uhd2160, frameRate: .fps60, codec: .hevc)
+        let destination = take.appending(path: "out.mp4", directoryHint: .notDirectory)
+        let started = Progress()
+        let export = Task { [project] in try await Export.run(project, to: destination) { started.record($0) } }
+        while started.count == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        export.cancel()
+        await #expect(throws: ExportError.cancelled) { try await export.value }
+        let listing = try FileManager.default.contentsOfDirectory(atPath: take.path).sorted()
+        #expect(listing == ["cursors", "events.ndjson", "recording.json", "screen.mov"], "\(listing)")
+    }
+
+    @Test func stillAndExportProduceIdenticalPixels() async throws {
         // Still.png and the export go through one composition. Catches two drawing paths drifting
         // apart. The export frame is decoded without any composition, so the only difference is the
         // HEVC round trip. Calibrated on the first run: 38.9, 40.3, and 40.7 dB at the three times,

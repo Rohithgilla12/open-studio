@@ -33,17 +33,27 @@ public struct Project: Sendable {
             throw .source(error)
         }
         let url = ProjectFile.url(in: take)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            return Project(source: source, edits: Edits.generated(for: source), origin: .generated)
-        }
-        let file = try ProjectFile.read(url, duration: source.duration)
-        guard file.recordingID == source.id else {
+        guard FileManager.default.fileExists(atPath: url.path),
+            let file = try ProjectFile.read(url, recordingID: source.id, duration: source.duration)
+        else {
             return Project(source: source, edits: Edits.generated(for: source), origin: .generated)
         }
         return Project(
             source: source,
             edits: Edits(zooms: file.zooms, settings: file.settings, style: file.style, format: file.output),
             origin: .saved)
+    }
+
+    /// The take with generated edits, without reading project.json at all, so `--auto-zooms`
+    /// still works when the saved file is unreadable.
+    public static func generated(_ take: URL) throws(ProjectError) -> Project {
+        let source: SourceRecording
+        do {
+            source = try SourceRecording.load(from: take)
+        } catch {
+            throw .source(error)
+        }
+        return Project(source: source, edits: Edits.generated(for: source), origin: .generated)
     }
 
     init(source: SourceRecording, edits: Edits, origin: EditsOrigin) {
@@ -74,6 +84,7 @@ public struct Project: Sendable {
         do {
             try data.write(to: temporary)
         } catch {
+            try? FileManager.default.removeItem(at: temporary)
             throw .saveFailed(error.localizedDescription)
         }
         guard rename(temporary.path, destination.path) == 0 else {
@@ -146,13 +157,16 @@ struct ProjectFile: Codable {
 
     static func url(in take: URL) -> URL { take.appending(path: fileName, directoryHint: .notDirectory) }
 
-    /// The header is decoded first, so a newer version is refused before its body can fail to parse.
+    /// The header is decoded first, so a newer version is refused, and a file from another take
+    /// ignored, before the body is parsed or validated.
     private struct Header: Decodable {
         var format: String
         var version: Int
+        var recordingID: UUID
     }
 
-    static func read(_ url: URL, duration: RecordingTime) throws(ProjectError) -> ProjectFile {
+    /// nil when the file belongs to another take.
+    static func read(_ url: URL, recordingID: UUID, duration: RecordingTime) throws(ProjectError) -> ProjectFile? {
         let data: Data
         do {
             data = try Data(contentsOf: url)
@@ -172,6 +186,7 @@ struct ProjectFile: Codable {
         guard header.version <= currentVersion else {
             throw .projectFromNewerVersion(found: header.version, supported: currentVersion)
         }
+        guard header.recordingID == recordingID else { return nil }
         let file: ProjectFile
         do {
             file = try decoder.decode(ProjectFile.self, from: data)
@@ -183,6 +198,24 @@ struct ProjectFile: Codable {
         if let segment = file.zooms.segments.first(where: { $0.range.start < .zero || $0.range.end > duration }) {
             throw .projectUnreadable("\(fileName): zoom \(segment.id) lies outside the recording")
         }
+        if let problem = file.style.problem {
+            throw .projectUnreadable("\(fileName): style \(problem)")
+        }
         return file
+    }
+}
+
+extension Style {
+    /// Why a decoded style cannot be rendered, or nil. The geometry trusts these ranges.
+    var problem: String? {
+        if !(padding >= 0 && padding < 0.5) { return "padding \(padding) is not in [0, 0.5)" }
+        if !(cornerRadius >= 0) { return "cornerRadius \(cornerRadius) is negative" }
+        if !(shadow.opacity >= 0 && shadow.opacity <= 1) { return "shadow opacity \(shadow.opacity) is not in [0, 1]" }
+        if !(shadow.blur >= 0) { return "shadow blur \(shadow.blur) is negative" }
+        if !shadow.offsetY.isFinite { return "shadow offset is not finite" }
+        if case .image(let asset) = background, asset.fileName.isEmpty || asset.fileName.contains("/") {
+            return "background image name \(asset.fileName) is not a file name"
+        }
+        return nil
     }
 }

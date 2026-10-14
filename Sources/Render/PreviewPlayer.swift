@@ -42,18 +42,27 @@ public final class PreviewPlayer {
         applyTask = Task { [self] in
             while let next = pending {
                 pending = nil
-                apply(next)
+                await apply(next)
                 try? await Task.sleep(for: Self.editInterval)
             }
             applyTask = nil
         }
     }
 
-    private func apply(_ project: Project) {
-        do {
-            scene = try RenderScene.make(project: project, format: project.edits.format, reusing: scene)
+    private func apply(_ project: Project) async {
+        // A style change re-renders and dithers the backdrop (about 8 million pixels at 4K), so
+        // the scene is built off the main actor.
+        let previous = scene
+        let built = await Task.detached {
+            Result { () throws(RenderError) -> RenderScene in
+                try RenderScene.make(project: project, format: project.edits.format, reusing: previous)
+            }
+        }.value
+        switch built {
+        case .success(let next):
+            scene = next
             lastError = nil
-        } catch {
+        case .failure(let error):
             lastError = error
             return
         }

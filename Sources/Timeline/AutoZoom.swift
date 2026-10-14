@@ -42,6 +42,10 @@ public struct ZoomTrack: Sendable, Hashable, Codable {
         for segment in sorted where !(segment.scale >= 1) {
             throw .scaleBelowOne(segment.id)
         }
+        var ids: Set<UUID> = []
+        for segment in sorted where !ids.insert(segment.id).inserted {
+            throw .duplicateID(segment.id)
+        }
         self.init(sorted: sorted)
     }
 
@@ -62,6 +66,8 @@ public enum ZoomTrackError: Error, Sendable, Equatable {
     /// `second` starts before `first` ends.
     case overlap(UUID, UUID)
     case scaleBelowOne(UUID)
+    /// Edits address segments by id, so two segments cannot share one.
+    case duplicateID(UUID)
 }
 
 public enum AutoZoom {

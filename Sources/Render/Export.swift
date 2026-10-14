@@ -28,7 +28,7 @@ public enum Export {
         let format = project.edits.format
         let canvas = scene.layout.canvas
         let partial = destination.deletingLastPathComponent()
-            .appending(path: ".\(destination.lastPathComponent).partial", directoryHint: .notDirectory)
+            .appending(path: ".\(destination.lastPathComponent).partial.mp4", directoryHint: .notDirectory)
         try? FileManager.default.removeItem(at: partial)
 
         let reader: AVAssetReader
@@ -123,16 +123,27 @@ public enum Export {
             stop.cancel()
         }
 
-        if stop.isCancelled {
+        // A callback still running on a pump's queue may be inside the reader; cancelling the
+        // reader under it traps. Draining the queues first lets it finish, and any later callback
+        // sees the stop flag and returns before touching the reader.
+        for pump in pumps { pump.drain() }
+
+        // A failed append stops the pumps too, so the writer's own error is checked first.
+        if writer.status == .failed {
             reader.cancelReading()
-            writer.cancelWriting()
             try? FileManager.default.removeItem(at: partial)
-            throw .cancelled
+            throw .writerFailed(writer.error?.localizedDescription ?? "writer failed")
         }
         if reader.status == .failed {
             writer.cancelWriting()
             try? FileManager.default.removeItem(at: partial)
             throw .readerFailed(reader.error?.localizedDescription ?? "reader failed")
+        }
+        if stop.isCancelled {
+            reader.cancelReading()
+            writer.cancelWriting()
+            try? FileManager.default.removeItem(at: partial)
+            throw .cancelled
         }
         await writer.finishWriting()
         guard writer.status == .completed else {
@@ -153,12 +164,30 @@ public enum Export {
             bytes: bytes, warnings: movie.warnings + scene.assets.warnings)
     }
 
-    /// Shared cancellation flag between the task that owns the export and the pumps on their
-    /// dispatch queues, which cannot see `Task.isCancelled`.
+    /// Shared stop signal between the task that owns the export and the pumps on their dispatch
+    /// queues, which cannot see `Task.isCancelled`. Stopping also releases every pump that is
+    /// waiting for its input to become ready again, which a failed writer never does.
     private final class Stop: Sendable {
-        private let flag = Mutex(false)
-        var isCancelled: Bool { flag.withLock { $0 } }
-        func cancel() { flag.withLock { $0 = true } }
+        private let state = Mutex<(stopped: Bool, release: [@Sendable () -> Void])>((false, []))
+
+        var isCancelled: Bool { state.withLock { $0.stopped } }
+
+        func onStop(_ release: @escaping @Sendable () -> Void) {
+            let stopped = state.withLock { state in
+                if !state.stopped { state.release.append(release) }
+                return state.stopped
+            }
+            if stopped { release() }
+        }
+
+        func cancel() {
+            let release = state.withLock { state in
+                state.stopped = true
+                defer { state.release = [] }
+                return state.release
+            }
+            for pump in release { pump() }
+        }
     }
 
     /// Moves every sample from one reader output into one writer input. The composition yields
@@ -183,22 +212,29 @@ public enum Export {
 
         var count: Int { written.withLock { $0 } }
 
+        /// Returns once no callback is executing on this pump's queue.
+        func drain() { queue.sync {} }
+
         func run(until stop: Stop) async {
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                let finished = Mutex(false)
-                let finish = { [input] in
-                    guard finished.withLock({ let was = $0; $0 = true; return !was }) else { return }
-                    input.markAsFinished()
+                let resumed = Mutex(false)
+                let resume: @Sendable () -> Void = {
+                    guard resumed.withLock({ let was = $0; $0 = true; return !was }) else { return }
                     continuation.resume()
                 }
+                // A stop resumes without marking the input finished; the owner cancels the writer.
+                stop.onStop(resume)
                 input.requestMediaDataWhenReady(on: queue) { [self] in
                     while input.isReadyForMoreMediaData {
-                        if stop.isCancelled { return finish() }
-                        guard let sample = output.copyNextSampleBuffer() else { return finish() }
+                        if stop.isCancelled { return resume() }
+                        guard let sample = output.copyNextSampleBuffer() else {
+                            input.markAsFinished()
+                            return resume()
+                        }
                         guard input.append(sample) else {
-                            // The writer records its error; the outer check reports it.
+                            // The writer holds the error; the owner reports it after the pumps stop.
                             stop.cancel()
-                            return finish()
+                            return resume()
                         }
                         onSample(written.withLock { $0 += 1; return $0 })
                     }

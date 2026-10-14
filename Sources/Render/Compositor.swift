@@ -9,9 +9,7 @@ import Timeline
 /// back on every request (`request.videoCompositionInstruction`), which is the only data channel
 /// into a compositor it instantiates itself. Verified in the spike: the instruction's stored
 /// scene reached all 600 requests.
-///
-/// `@unchecked` only because NSObject is not Sendable; every stored property is immutable.
-final class SceneInstruction: NSObject, AVVideoCompositionInstructionProtocol, @unchecked Sendable {
+final class SceneInstruction: NSObject, AVVideoCompositionInstructionProtocol, Sendable {
     let timeRange: CMTimeRange
     let enablePostProcessing = false
     /// Every frame changes (camera, cursor), so AVFoundation must never reuse a previous output.
@@ -33,7 +31,7 @@ final class SceneInstruction: NSObject, AVVideoCompositionInstructionProtocol, @
 ///
 /// Holds no per-frame state. Its only mutable state is the render context AVFoundation assigns and
 /// a cancellation generation, both behind one Mutex.
-final class StyledCompositor: NSObject, AVVideoCompositing, @unchecked Sendable {
+final class StyledCompositor: NSObject, AVVideoCompositing, Sendable {
     /// Requests rendered concurrently. CIContext is thread-safe. Measured on a 4K60 export: 1 in
     /// flight 92 fps, 2 in flight 101 fps, 4 in flight 97 fps with the writer attached (the writer
     /// side caps it); 4 in flight without a writer 142 fps.
@@ -114,9 +112,7 @@ final class StyledCompositor: NSObject, AVVideoCompositing, @unchecked Sendable 
         request.finish(withComposedVideoFrame: output)
     }
 
-    /// `@unchecked` because AVFoundation's request and render context are not marked Sendable; each
-    /// request is handed to exactly one render closure.
-    private struct Pending: @unchecked Sendable {
+    private struct Pending: Sendable {
         let request: AVAsynchronousVideoCompositionRequest
         let context: AVVideoCompositionRenderContext?
         let generation: Int

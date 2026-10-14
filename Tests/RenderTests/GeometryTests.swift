@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreImage
 import Foundation
 import Testing
 @testable import Render
@@ -169,12 +170,31 @@ struct FrameGeometrySpec {
 }
 
 struct BackdropSpec {
-    @Test func ditherIsDeterministicAndWithinOneCodeValue() {
+    @Test func noiseIsDeterministicAndInRange() {
         for (x, y) in [(0, 0), (17, 3), (1919, 1079), (3839, 2159)] {
             let n = Backdrop.noise(x: x, y: y)
             #expect(n >= 0 && n < 1)
             #expect(n == Backdrop.noise(x: x, y: y))
         }
         #expect(Backdrop.noise(x: 1, y: 0) != Backdrop.noise(x: 0, y: 1))
+    }
+
+    @Test func ditheredBackdropKeepsTheColourAndIsBitIdentical() throws {
+        // A solid mid-grey must come back as grey within one code value everywhere, with no scale
+        // or clamp error, and the same bytes on every build.
+        let canvas = PixelSize(width: 64, height: 48)
+        let grey = try Backdrop.background(.solid(RGBColor(red: 0.5, green: 0.5, blue: 0.5)), canvas: canvas, directory: URL(filePath: "/"))
+        let first = Pixels(try #require(Backdrop.dithered(grey, canvas: canvas).cgImage))
+        let second = Pixels(try #require(Backdrop.dithered(grey, canvas: canvas).cgImage))
+        #expect(first.bytes == second.bytes)
+        var values: Set<Int> = []
+        for y in 0..<canvas.height {
+            for x in 0..<canvas.width {
+                let p = first[x, y]
+                values.formUnion([p.red, p.green, p.blue])
+            }
+        }
+        #expect(values.count <= 3, "\(values.sorted())")
+        #expect(values.allSatisfy { abs($0 - 128) <= 8 }, "\(values.sorted())")
     }
 }

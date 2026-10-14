@@ -81,6 +81,8 @@ struct PreviewSpec {
         let unprompted = tap.output.hasNewPixelBuffer(forItemTime: player.currentTime())
         let recomposed = await tap.wait(.seconds(2)) { isGreen(tap.pixel(x: 10, y: 10, at: player.currentTime())) }
         print("HARNESS paused swap without seek: new frame unprompted after 300 ms: \(unprompted); green frame: \(recomposed.map { "after a further \($0) ms" } ?? "none within 2 s")")
+        #expect(unprompted, "the paused item did not compose a new frame on its own")
+        #expect(recomposed != nil)
 
         await withCheckedContinuation { c in player.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero) { _ in c.resume() } }
         let afterSeek = await tap.wait(.seconds(2)) { isGreen(tap.pixel(x: 10, y: 10, at: player.currentTime())) }

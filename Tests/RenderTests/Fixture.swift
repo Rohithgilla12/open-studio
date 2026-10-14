@@ -25,18 +25,26 @@ enum Fixture {
         return directory
     }
 
+    typealias Color = (red: UInt8, green: UInt8, blue: UInt8)
+
     /// Copies the committed fixture to a temporary directory and writes a solid `screen.mov` into it.
-    static func take(color: (red: UInt8, green: UInt8, blue: UInt8), seconds: Double = 2) async throws -> URL {
+    static func take(color: Color, seconds: Double = 2) async throws -> URL {
+        try await take(top: color, bottom: color, seconds: seconds)
+    }
+
+    /// As `take(color:)`, with the top and bottom halves of the frame in different colours, so a
+    /// flipped crop or placement shows up.
+    static func take(top: Color, bottom: Color, seconds: Double = 2) async throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "RenderTests-\(UUID().uuidString).osrec", directoryHint: .isDirectory)
         try FileManager.default.copyItem(at: committedDirectory(), to: directory)
-        try await writeSolidMovie(
+        try await writeMovie(
             to: directory.appending(path: "screen.mov", directoryHint: .notDirectory), width: 1920, height: 1080,
-            color: color, seconds: seconds)
+            top: top, bottom: bottom, seconds: seconds)
         return directory
     }
 
-    static func writeSolidMovie(to url: URL, width: Int, height: Int, color: (red: UInt8, green: UInt8, blue: UInt8), seconds: Double) async throws {
+    static func writeMovie(to url: URL, width: Int, height: Int, top: Color, bottom: Color, seconds: Double) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height,
@@ -49,6 +57,7 @@ enum Fixture {
         let base = CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self)
         let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
         for y in 0..<height {
+            let color = y < height / 2 ? top : bottom
             for x in 0..<width {
                 let p = base + y * rowBytes + x * 4
                 p[0] = color.blue

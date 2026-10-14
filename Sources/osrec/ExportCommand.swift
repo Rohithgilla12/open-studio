@@ -27,6 +27,7 @@ struct ExportCommand: AsyncParsableCommand {
 
     func validate() throws {
         if stills.isEmpty, out == nil { throw ValidationError("--out is required unless --still is given") }
+        if !stills.isEmpty, out != nil { throw ValidationError("--still and --out are exclusive") }
         if let fps, FrameRate(rawValue: fps) == nil { throw ValidationError("--fps must be 30 or 60") }
     }
 
@@ -34,21 +35,16 @@ struct ExportCommand: AsyncParsableCommand {
         let takeURL = URL(filePath: take, directoryHint: .isDirectory)
         var project: Project
         do {
-            project = try Project.open(takeURL)
+            project = autoZooms ? try Project.generated(takeURL) : try Project.open(takeURL)
         } catch {
             print("cannot open \(take): \(error)")
             throw ExitCode(2)
-        }
-        if autoZooms {
-            var generated = Edits.generated(for: project.source)
-            generated.format = project.edits.format
-            project.edits = generated
         }
         if let size { project.edits.format.size = size }
         if let fps { project.edits.format.frameRate = FrameRate(rawValue: fps)! }
         if let codec { project.edits.format.codec = codec }
         for warning in project.source.loadWarnings { print("load warning: \(warning)") }
-        print("edits: \(project.origin == .saved && !autoZooms ? "project.json" : "generated"), \(project.edits.zooms.segments.count) zooms")
+        print("edits: \(project.origin == .saved ? "project.json" : "generated"), \(project.edits.zooms.segments.count) zooms")
 
         if !stills.isEmpty {
             let directory = URL(filePath: stillDir, directoryHint: .isDirectory)
@@ -65,13 +61,19 @@ struct ExportCommand: AsyncParsableCommand {
         let format = project.edits.format
         let canvas = format.canvasSize(for: project.source.frameSize, padding: project.edits.style.padding)
         let report: ExportReport
-        do {
-            report = try await Export.run(project, to: destination) { p in
+        let export = Task { [project] in
+            try await Export.run(project, to: destination) { p in
                 let width = 30
                 let filled = Int(p.fraction * Double(width))
                 let bar = String(repeating: "#", count: filled) + String(repeating: "-", count: width - filled)
                 FileHandle.standardError.write(Data("\r[\(bar)] \(p.framesWritten)/\(p.framesTotal)".utf8))
             }
+        }
+        // Ctrl-C cancels the task, which removes the partial file instead of leaving it behind.
+        let interrupts = InterruptHandler { export.cancel() }
+        interrupts.install()
+        do {
+            report = try await export.value
         } catch {
             FileHandle.standardError.write(Data("\n".utf8))
             print("export failed: \(error)")

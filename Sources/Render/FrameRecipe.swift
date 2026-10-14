@@ -13,12 +13,15 @@ enum FrameRecipe {
         let viewport = flipped(geometry.viewport, canvasHeight: sourceHeight)
         let contentRect = flipped(layout.content, canvasHeight: canvasHeight)
 
+        // Anchored at the content rect's top edge, like the cursor placement, so the two agree to
+        // the pixel and the snap's sub-pixel remainder falls at the bottom edge.
+        let drawnHeight = viewport.height * geometry.scale
         var content = source.cropped(to: viewport)
             .transformed(by: CGAffineTransform(translationX: -viewport.minX, y: -viewport.minY))
             .applyingFilter("CILanczosScaleTransform", parameters: [
                 kCIInputScaleKey: geometry.scale, kCIInputAspectRatioKey: 1,
             ])
-            .transformed(by: CGAffineTransform(translationX: contentRect.minX, y: contentRect.minY))
+            .transformed(by: CGAffineTransform(translationX: contentRect.minX, y: contentRect.maxY - drawnHeight))
 
         if let cursor = geometry.cursor {
             let image = cursor.image.flatMap { assets.cursors[$0] } ?? assets.fallbackCursor
