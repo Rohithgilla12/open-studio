@@ -32,14 +32,14 @@ func frame(viewport: Rect, cursor: Point = Point(x: 0, y: 0), image: CursorImage
 let fullFrame = Rect(origin: Point(x: 0, y: 0), size: source)
 
 struct CanvasLayoutSpec {
-    @Test func contentAspectFitsInsidePaddingAndIsCentred() {
+    @Test func contentAspectFitsInsidePaddingAndIsCentred() throws {
         // 3456 x 2234 into 1920 x 1080 with padding 0.08: unit 1080, inset 86.4 px each side.
         // Available 1747.2 x 907.2; k = min(0.5056, 0.4061) = 0.4061; content 1403 x 907, centred.
         // Catches: padding applied in source pixels, or fit by width only (content taller than canvas).
         let l = layout()
         #expect(l.content == Rect(origin: Point(x: 258, y: 86), size: Size(width: 1403, height: 907)))
         #expect(l.cornerRadius == 0.012 * 1080)
-        let shadow = try! #require(l.shadow)
+        let shadow = try #require(l.shadow)
         #expect(shadow.rect.origin == Point(x: 258, y: 86 + 0.012 * 1080))
         #expect(shadow.sigma == 0.02 * 1080)
         #expect(shadow.opacity == 0.45)
