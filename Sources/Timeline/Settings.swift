@@ -54,6 +54,16 @@ public struct AutoZoomSettings: Sendable, Hashable, Codable {
     public var scale: Double = 2
 
     public init() {}
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        try c.decodeIfPresent(RecordingTime.self, forKey: .windowBefore).map { windowBefore = $0 }
+        try c.decodeIfPresent(RecordingTime.self, forKey: .windowAfter).map { windowAfter = $0 }
+        try c.decodeIfPresent(RecordingTime.self, forKey: .mergeGap).map { mergeGap = $0 }
+        try c.decodeIfPresent(RecordingTime.self, forKey: .ignoreClicksInFinal).map { ignoreClicksInFinal = $0 }
+        try c.decodeIfPresent(RecordingTime.self, forKey: .endMargin).map { endMargin = $0 }
+        try c.decodeIfPresent(Double.self, forKey: .scale).map { scale = $0 }
+    }
 }
 
 public struct CameraSettings: Sendable, Hashable, Codable {
@@ -71,6 +81,16 @@ public struct CameraSettings: Sendable, Hashable, Codable {
     public var rescaleShortIntervals: Bool = true
 
     public init() {}
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        try c.decodeIfPresent(Spring.self, forKey: .spring).map { spring = $0 }
+        // An optional setting keeps its explicit null: a saved "no lead-in" must not become the default.
+        if c.contains(.leadIn) { leadIn = try c.decodeIfPresent(RecordingTime.self, forKey: .leadIn) }
+        try c.decodeIfPresent(Double.self, forKey: .thinningDistance).map { thinningDistance = $0 }
+        try c.decodeIfPresent(Double.self, forKey: .shakeThreshold).map { shakeThreshold = $0 }
+        try c.decodeIfPresent(Bool.self, forKey: .rescaleShortIntervals).map { rescaleShortIntervals = $0 }
+    }
 }
 
 /// How the drawn cursor follows the recorded pointer.
@@ -111,6 +131,21 @@ public struct CursorSettings: Sendable, Hashable, Codable {
     public static let observedIdleHide = RecordingTime.milliseconds(2000)
 
     public init() {}
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        try c.decodeIfPresent(CursorSmoothing.self, forKey: .smoothing).map { smoothing = $0 }
+        try c.decodeIfPresent(Spring.self, forKey: .clickSpring).map { clickSpring = $0 }
+        try c.decodeIfPresent(RecordingTime.self, forKey: .clickSpringLead).map { clickSpringLead = $0 }
+        try c.decodeIfPresent(Double.self, forKey: .thinningDistance).map { thinningDistance = $0 }
+        try c.decodeIfPresent(Double.self, forKey: .shakeThreshold).map { shakeThreshold = $0 }
+        try c.decodeIfPresent(Double.self, forKey: .pressedScale).map { pressedScale = $0 }
+        try c.decodeIfPresent(RecordingTime.self, forKey: .pressTransition).map { pressTransition = $0 }
+        try c.decodeIfPresent(Int.self, forKey: .typingKeyCount).map { typingKeyCount = $0 }
+        try c.decodeIfPresent(RecordingTime.self, forKey: .typingWindow).map { typingWindow = $0 }
+        try c.decodeIfPresent(RecordingTime.self, forKey: .fadeDuration).map { fadeDuration = $0 }
+        if c.contains(.idleHideAfter) { idleHideAfter = try c.decodeIfPresent(RecordingTime.self, forKey: .idleHideAfter) }
+    }
 }
 
 /// Every tunable Timeline uses. Codable so the editor can persist it with its other edit state.
@@ -121,4 +156,11 @@ public struct TimelineSettings: Sendable, Hashable, Codable {
 
     public init() {}
     public static let `default` = TimelineSettings()
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        try c.decodeIfPresent(AutoZoomSettings.self, forKey: .autoZoom).map { autoZoom = $0 }
+        try c.decodeIfPresent(CameraSettings.self, forKey: .camera).map { camera = $0 }
+        try c.decodeIfPresent(CursorSettings.self, forKey: .cursor).map { cursor = $0 }
+    }
 }

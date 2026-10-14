@@ -11,7 +11,11 @@ public struct SourceRecording: Sendable {
     public let duration: RecordingTime
     /// Screen video size in pixels. Every `Point` in this model is in this space.
     public let frameSize: Size
-    public let hasMicrophone: Bool
+    /// The screen movie. File names stay in RecordingFormat; the renderer never spells them.
+    public let screenMovie: URL
+    /// nil when the manifest lists no microphone.
+    public let microphoneMovie: URL?
+    public var hasMicrophone: Bool { microphoneMovie != nil }
     public let termination: SourceTermination
 
     /// Every pointer position: the t = 0 state, moves, drags, downs, and ups. Sorted by time.
@@ -138,7 +142,8 @@ public struct SourceRecording: Sendable {
         directory = metadata.layout.directory
         self.duration = RecordingTime(duration)
         frameSize = Size(width: Double(manifest.screen.pixelWidth), height: Double(manifest.screen.pixelHeight))
-        hasMicrophone = manifest.microphone != nil
+        screenMovie = metadata.layout.screen
+        microphoneMovie = manifest.microphone == nil ? nil : metadata.layout.microphone
         termination = SourceTermination(wireTermination)
         self.pointer = pointer
         self.buttons = buttons

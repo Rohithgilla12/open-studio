@@ -22,6 +22,8 @@ struct LoadSpec {
         #expect(source.frameSize == Size(width: 1920, height: 1080))
         #expect(source.termination == .userStopped)
         #expect(source.hasMicrophone == false)
+        #expect(source.microphoneMovie == nil)
+        #expect(source.screenMovie == layout.screen)
         #expect(source.loadWarnings.isEmpty)
         #expect(source.pointer.count == 12 * 60 + 2 * Fixture.clickSeconds.count)
         #expect(source.pointer.isSorted { $0.time <= $1.time })
@@ -54,6 +56,19 @@ struct LoadSpec {
         let lock = try #require(try DirectoryLock.acquire(in: RecordingLayout(directory: directory)))
         defer { lock.release() }
         #expect(throws: SourceLoadError.stillRecording) { try SourceRecording.load(from: directory) }
+    }
+
+    @Test func microphoneMovieFollowsTheManifest() throws {
+        let directory = try Fixture.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var generated = try Fixture.generate()
+        generated.manifest = try Fixture.editJSON(generated.manifest) {
+            $0["microphone"] = ["deviceName": "Fixture Mic", "sampleRate": 48000, "channelCount": 1]
+        }
+        try Fixture.write(generated, to: directory)
+        let source = try SourceRecording.load(from: directory)
+        #expect(source.hasMicrophone)
+        #expect(source.microphoneMovie == RecordingLayout(directory: directory).microphone)
     }
 
     @Test func rejectsNewerFormatVersion() throws {

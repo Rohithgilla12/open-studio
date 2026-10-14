@@ -46,6 +46,16 @@ public struct ZoomTrack: Sendable, Hashable, Codable {
     }
 
     init(sorted segments: [ZoomSegment]) { self.segments = segments }
+
+    /// Encoded as the bare segment array. Decoding validates, so a file cannot build an overlapping
+    /// track; a `ZoomTrackError` surfaces unchanged.
+    public init(from decoder: any Decoder) throws {
+        try self.init(validating: try [ZoomSegment](from: decoder))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        try segments.encode(to: encoder)
+    }
 }
 
 public enum ZoomTrackError: Error, Sendable, Equatable {

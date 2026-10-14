@@ -47,6 +47,23 @@ public struct TimeRange: Sendable, Hashable, Codable {
     public func contains(_ t: RecordingTime) -> Bool { start <= t && t < end }
 
     public var duration: RecordingTime { end - start }
+
+    /// Decoding goes through `init?(start:end:)`, so a file cannot produce the empty range the type
+    /// promises cannot exist.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let start = try c.decode(RecordingTime.self, forKey: .start)
+        let end = try c.decode(RecordingTime.self, forKey: .end)
+        guard let range = TimeRange(start: start, end: end) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .end, in: c, debugDescription: "range end \(end.microseconds) is not after start \(start.microseconds)")
+        }
+        self = range
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case start, end
+    }
 }
 
 /// Screen video pixels, origin top-left, y down. The same space the recording directory uses, so
