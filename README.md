@@ -2,11 +2,12 @@
 
 A native macOS screen recorder that zooms in on your clicks. Written in Swift, with no Electron.
 
-This repository has the recording and timeline core. It doesn't have the editor app, renderer, or export yet.
+This repository has the recording, timeline, and rendering core, and a command-line harness. The editor app is in progress.
 
 - **Recording** captures one display with ScreenCaptureKit and hides the cursor from the video. It also records input events, cursor images, and optionally the microphone. A crash or force-quit keeps everything written up to the last second.
 - **Timeline** reads a recording and works out the automatic zooms from your clicks. It then gives the camera position, zoom, and cursor state for any frame. Its answers are pure functions of time, so a renderer can ask from any thread in any order and get identical results.
-- **osrec** is a command-line harness that drives both modules from a terminal.
+- **Render** draws each output frame: the screen zoomed to the camera, the cursor redrawn on top, and a background with padding, rounded corners, and a shadow. Preview, export, and stills share one compositor, so they produce the same pixels.
+- **osrec** is a command-line harness that drives these modules from a terminal.
 
 ## Requirements
 
@@ -30,6 +31,16 @@ swift test
 .build/release/osrec inspect <dir>.osrec --timeline
 ```
 
+Export a take to MP4, or a single frame to PNG:
+
+```sh
+.build/release/osrec export <dir>.osrec --out demo.mp4                 # 1080p60 HEVC with automatic zooms
+.build/release/osrec export <dir>.osrec --out demo-4k.mp4 --size uhd2160
+.build/release/osrec export <dir>.osrec --still 4200                   # the frame at 4.2 s
+```
+
+`export` uses `<dir>.osrec/project.json` when it exists, so it renders the app's edits. `--auto-zooms` ignores it.
+
 Without `--display`, `osrec` records the main display. Auto-zoom only reacts to clicks on the recorded display.
 
 To stop a recording early, press Ctrl-C. If the recorder was killed instead, run `osrec recover <dir>.osrec` to finish the take. It's safe to run it more than once.
@@ -47,6 +58,7 @@ microphone.mov     fragmented QuickTime, only when recorded with --mic
 events.ndjson      append-only input and cursor events
 cursors/<id>.png   cursor images, named by content hash
 .lock              held while recording
+project.json       edits (zooms, style, output format), written by the editor; the recorder never touches it
 ```
 
 Every timestamp is in integer microseconds from the first complete video frame. Positions are in screen-video pixels. [`recording-directory-example.md`](docs/design/accepted/recording-directory-example.md) shows a full example.
@@ -57,6 +69,7 @@ Every timestamp is in integer microseconds from the first complete video frame. 
 Sources/RecordingFormat   the on-disk contract, shared by both modules
 Sources/Recording         capture, crash recovery, permissions
 Sources/Timeline          auto-zoom, springs, camera and cursor tracks
+Sources/Render            compositor, export, stills, project.json
 Sources/osrec             command-line harness
 Experiments/              measurements the design relies on
 docs/design/              brief, accepted design and rationale, rejected candidates

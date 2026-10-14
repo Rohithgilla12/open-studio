@@ -61,8 +61,11 @@ struct ExportCommand: AsyncParsableCommand {
         let format = project.edits.format
         let canvas = format.canvasSize(for: project.source.frameSize, padding: project.edits.style.padding)
         let report: ExportReport
+        // A redrawn bar is noise in a log or a pipe, so it only draws on a terminal.
+        let drawsProgress = isatty(STDERR_FILENO) == 1
         let export = Task { [project] in
             try await Export.run(project, to: destination) { p in
+                guard drawsProgress else { return }
                 let width = 30
                 let filled = Int(p.fraction * Double(width))
                 let bar = String(repeating: "#", count: filled) + String(repeating: "-", count: width - filled)
@@ -75,11 +78,11 @@ struct ExportCommand: AsyncParsableCommand {
         do {
             report = try await export.value
         } catch {
-            FileHandle.standardError.write(Data("\n".utf8))
+            if drawsProgress { FileHandle.standardError.write(Data("\n".utf8)) }
             print("export failed: \(error)")
             throw ExitCode(1)
         }
-        FileHandle.standardError.write(Data("\n".utf8))
+        if drawsProgress { FileHandle.standardError.write(Data("\n".utf8)) }
         for warning in report.warnings { print("warning: \(warning)") }
         print(String(
             format: "%d frames, %dx%d @ %d %@, %.2f s wall, %.1f fps, %.2fx real time, %.1f MB -> %@",
