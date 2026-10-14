@@ -16,6 +16,15 @@ enum Fixture {
             .appending(path: "Fixtures/recordings/\(committed)", directoryHint: .isDirectory)
     }
 
+    /// Copies the committed fixture's metadata to a temporary directory. Project.open never reads
+    /// media, so persistence tests need no movie.
+    static func metadataOnlyTake() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "RenderTests-\(UUID().uuidString).osrec", directoryHint: .isDirectory)
+        try FileManager.default.copyItem(at: committedDirectory(), to: directory)
+        return directory
+    }
+
     /// Copies the committed fixture to a temporary directory and writes a solid `screen.mov` into it.
     static func take(color: (red: UInt8, green: UInt8, blue: UInt8), seconds: Double = 2) async throws -> URL {
         let directory = FileManager.default.temporaryDirectory

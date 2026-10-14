@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Timeline
 
@@ -20,6 +21,10 @@ public struct Project: Sendable {
 
     /// Loads the take's metadata and its saved edits, or generates defaults (automatic zooms,
     /// default settings and style) when there are none. Never writes.
+    ///
+    /// A project.json whose `recordingID` is not this take's is ignored, so a file copied between
+    /// takes cannot apply the wrong zooms. One written by a newer build is refused, never rewritten
+    /// with its unknown fields dropped.
     public static func open(_ take: URL) throws(ProjectError) -> Project {
         let source: SourceRecording
         do {
@@ -27,7 +32,18 @@ public struct Project: Sendable {
         } catch {
             throw .source(error)
         }
-        return Project(source: source, edits: Edits.generated(for: source), origin: .generated)
+        let url = ProjectFile.url(in: take)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return Project(source: source, edits: Edits.generated(for: source), origin: .generated)
+        }
+        let file = try ProjectFile.read(url, duration: source.duration)
+        guard file.recordingID == source.id else {
+            return Project(source: source, edits: Edits.generated(for: source), origin: .generated)
+        }
+        return Project(
+            source: source,
+            edits: Edits(zooms: file.zooms, settings: file.settings, style: file.style, format: file.output),
+            origin: .saved)
     }
 
     init(source: SourceRecording, edits: Edits, origin: EditsOrigin) {
@@ -35,6 +51,36 @@ public struct Project: Sendable {
         self.edits = edits
         self.origin = origin
         timeline = Timeline(source: source, zooms: edits.zooms, settings: edits.settings)
+    }
+
+    /// Atomic replace of project.json (write to a temporary file in the same directory, then
+    /// rename), so a crash mid-save leaves the previous edits. Saving the same edits twice writes
+    /// the same bytes (sorted keys). The only file this module ever writes into a take.
+    public func save() throws(ProjectError) {
+        let file = ProjectFile(
+            format: ProjectFile.formatIdentifier, version: ProjectFile.currentVersion, recordingID: source.id,
+            zooms: edits.zooms, settings: edits.settings, style: edits.style, output: edits.format)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
+        let data: Data
+        do {
+            data = try encoder.encode(file)
+        } catch {
+            throw .saveFailed(error.localizedDescription)
+        }
+        let destination = ProjectFile.url(in: source.directory)
+        let temporary = source.directory.appending(
+            path: ".\(ProjectFile.fileName).\(UUID().uuidString).tmp", directoryHint: .notDirectory)
+        do {
+            try data.write(to: temporary)
+        } catch {
+            throw .saveFailed(error.localizedDescription)
+        }
+        guard rename(temporary.path, destination.path) == 0 else {
+            let message = String(cString: strerror(errno))
+            try? FileManager.default.removeItem(at: temporary)
+            throw .saveFailed("\(destination.path): \(message)")
+        }
     }
 
     /// Replaces the zooms with freshly generated ones from the current auto-zoom settings.
@@ -75,4 +121,68 @@ public enum ProjectError: Error, Sendable, Equatable {
     case projectFromNewerVersion(found: Int, supported: Int)
     case invalidZooms(ZoomTrackError)
     case saveFailed(String)
+}
+
+/// The on-disk shape. Internal, so no caller depends on the file layout.
+///
+///     { "format": "open-studio.project", "version": 1, "recordingID": "...",
+///       "zooms": [ {id, range: {start, end}, scale, focus} ], "settings": {...},
+///       "style": {...}, "output": {...} }
+///
+/// Additive keys keep the version, as in the recording format: the settings decoders default
+/// missing keys. A change to the meaning of a field bumps the version.
+struct ProjectFile: Codable {
+    static let fileName = "project.json"
+    static let formatIdentifier = "open-studio.project"
+    static let currentVersion = 1
+
+    var format: String
+    var version: Int
+    var recordingID: UUID
+    var zooms: ZoomTrack
+    var settings: TimelineSettings
+    var style: Style
+    var output: OutputFormat
+
+    static func url(in take: URL) -> URL { take.appending(path: fileName, directoryHint: .notDirectory) }
+
+    /// The header is decoded first, so a newer version is refused before its body can fail to parse.
+    private struct Header: Decodable {
+        var format: String
+        var version: Int
+    }
+
+    static func read(_ url: URL, duration: RecordingTime) throws(ProjectError) -> ProjectFile {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw .projectUnreadable(error.localizedDescription)
+        }
+        let decoder = JSONDecoder()
+        let header: Header
+        do {
+            header = try decoder.decode(Header.self, from: data)
+        } catch {
+            throw .projectUnreadable("\(fileName): \(error)")
+        }
+        guard header.format == formatIdentifier else {
+            throw .projectUnreadable("\(fileName) has format \(header.format), expected \(formatIdentifier)")
+        }
+        guard header.version <= currentVersion else {
+            throw .projectFromNewerVersion(found: header.version, supported: currentVersion)
+        }
+        let file: ProjectFile
+        do {
+            file = try decoder.decode(ProjectFile.self, from: data)
+        } catch let error as ZoomTrackError {
+            throw .invalidZooms(error)
+        } catch {
+            throw .projectUnreadable("\(fileName): \(error)")
+        }
+        if let segment = file.zooms.segments.first(where: { $0.range.start < .zero || $0.range.end > duration }) {
+            throw .projectUnreadable("\(fileName): zoom \(segment.id) lies outside the recording")
+        }
+        return file
+    }
 }
