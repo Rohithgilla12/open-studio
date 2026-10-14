@@ -43,4 +43,10 @@ public struct Timeline: Sendable {
 public struct FrameState: Sendable, Hashable {
     public let camera: CameraState
     public let cursor: CursorState
+
+    /// For renderer tests that pin geometry to exact numbers without running a spring.
+    public init(camera: CameraState, cursor: CursorState) {
+        self.camera = camera
+        self.cursor = cursor
+    }
 }

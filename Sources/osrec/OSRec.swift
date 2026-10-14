@@ -11,7 +11,7 @@ struct OSRec: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "osrec",
         abstract: "Record a display with input events into an .osrec directory, and inspect recordings.",
-        subcommands: [PermissionsCommand.self, Displays.self, Record.self, Recover.self, Inspect.self])
+        subcommands: [PermissionsCommand.self, Displays.self, Record.self, Recover.self, Inspect.self, ExportCommand.self])
 }
 
 struct PermissionsCommand: AsyncParsableCommand {

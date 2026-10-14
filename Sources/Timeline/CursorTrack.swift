@@ -229,4 +229,17 @@ public struct CursorState: Sendable, Hashable {
     /// False when the pointer is off this display or opacity is 0. The renderer can skip the cursor
     /// pass entirely.
     public let isVisible: Bool
+
+    public init(
+        position: Point, velocity: Velocity, image: CursorImageID?, isPressed: Bool, pressAmount: Double,
+        opacity: Double, isVisible: Bool
+    ) {
+        self.position = position
+        self.velocity = velocity
+        self.image = image
+        self.isPressed = isPressed
+        self.pressAmount = pressAmount
+        self.opacity = opacity
+        self.isVisible = isVisible
+    }
 }

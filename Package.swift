@@ -13,6 +13,7 @@ let package = Package(
     products: [
         .library(name: "Recording", targets: ["Recording"]),
         .library(name: "Timeline", targets: ["Timeline"]),
+        .library(name: "Render", targets: ["Render"]),
         .executable(name: "osrec", targets: ["osrec"]),
     ],
     dependencies: [
@@ -39,10 +40,22 @@ let package = Package(
             dependencies: ["RecordingFormat"],
             swiftSettings: xcodeProjectDefaults
         ),
+        .target(
+            name: "Render",
+            dependencies: ["Timeline"],
+            swiftSettings: xcodeProjectDefaults,
+            linkerSettings: [
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("CoreImage"),
+                .linkedFramework("CoreGraphics"),
+                .linkedFramework("ImageIO"),
+            ]
+        ),
         .executableTarget(
             name: "osrec",
             dependencies: [
                 "Recording",
+                "Render",
                 "Timeline",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
@@ -61,6 +74,11 @@ let package = Package(
         .testTarget(
             name: "TimelineTests",
             dependencies: ["Timeline"],
+            swiftSettings: xcodeProjectDefaults
+        ),
+        .testTarget(
+            name: "RenderTests",
+            dependencies: ["Render", "Timeline"],
             swiftSettings: xcodeProjectDefaults
         ),
     ]

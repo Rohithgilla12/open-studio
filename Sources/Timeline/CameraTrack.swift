@@ -114,4 +114,12 @@ public struct CameraState: Sendable, Hashable {
     /// Unclamped spring velocities, for motion blur.
     public let centerVelocity: Velocity
     public let scaleVelocity: Double
+
+    public init(viewport: Rect, scale: Double, center: Point, centerVelocity: Velocity, scaleVelocity: Double) {
+        self.viewport = viewport
+        self.scale = scale
+        self.center = center
+        self.centerVelocity = centerVelocity
+        self.scaleVelocity = scaleVelocity
+    }
 }

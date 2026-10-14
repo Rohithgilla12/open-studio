@@ -204,6 +204,12 @@ public struct CursorImageInfo: Sendable, Hashable {
     public let hotspot: Point
     /// Screen pixels: the size to draw at 1x camera zoom.
     public let size: Size
+
+    public init(relativePath: String, hotspot: Point, size: Size) {
+        self.relativePath = relativePath
+        self.hotspot = hotspot
+        self.size = size
+    }
 }
 
 public enum SourceTermination: Sendable, Hashable {
