@@ -61,8 +61,29 @@ struct ExportCommand: AsyncParsableCommand {
             }
             return
         }
-        print("movie export is not implemented yet")
-        throw ExitCode(1)
+        let destination = URL(filePath: out!, directoryHint: .notDirectory)
+        let format = project.edits.format
+        let canvas = format.canvasSize(for: project.source.frameSize, padding: project.edits.style.padding)
+        let report: ExportReport
+        do {
+            report = try await Export.run(project, to: destination) { p in
+                let width = 30
+                let filled = Int(p.fraction * Double(width))
+                let bar = String(repeating: "#", count: filled) + String(repeating: "-", count: width - filled)
+                FileHandle.standardError.write(Data("\r[\(bar)] \(p.framesWritten)/\(p.framesTotal)".utf8))
+            }
+        } catch {
+            FileHandle.standardError.write(Data("\n".utf8))
+            print("export failed: \(error)")
+            throw ExitCode(1)
+        }
+        FileHandle.standardError.write(Data("\n".utf8))
+        for warning in report.warnings { print("warning: \(warning)") }
+        print(String(
+            format: "%d frames, %dx%d @ %d %@, %.2f s wall, %.1f fps, %.2fx real time, %.1f MB -> %@",
+            report.frames, canvas.width, canvas.height, format.frameRate.rawValue, format.codec.rawValue,
+            report.wallSeconds, Double(report.frames) / report.wallSeconds, report.realTimeFactor,
+            Double(report.bytes) / 1e6, destination.path))
     }
 }
 
