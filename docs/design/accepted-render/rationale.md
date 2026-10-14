@@ -246,7 +246,16 @@ All three converged on one `AVVideoComposition` shared by preview and export, `f
 
 ## Implementation reconciliation
 
-*Empty until implementation starts.*
+### D6: recorder cursor
+
+This settles open question 3. The recorder now rasterises each cursor at the largest density its image offers. `size` and `hotspot` stay in screen pixels, so the declaration and the format are unchanged.
+
+- `CursorRaster` (in `Sources/Recording/CursorRaster.swift`) is the pure plan. It takes the image's point size, hotspot, display scale, and representation pixel widths. It returns the PNG pixel size and the declared screen-pixel size and hotspot.
+- The stored density is capped at 5× the screen pixels, and at 1024 px on the longer edge. 5× is the arrow's largest representation on a 2× display. It covers a 2× zoom in a 4K export from any source at least 1536 px wide. The edge cap bounds the PNG for oversized custom cursors. A resolution-independent representation rasterises at the cap.
+- `CursorImage.render` draws into a bitmap of exactly the planned size. `NSImage` hands back its best representation, which can be larger than the cap, so the extra draw keeps the cap exact. It also makes the same cursor yield the same bytes, so dedupe within a take still gives one image id.
+- The declared size is now `points × displayScale`, not the pixel size of whichever representation `NSImage` returned. They match for the arrow, the pointing hand, and the crosshair (measured with a probe). A cursor with only a 1× representation would have been declared at half its screen size on a 2× display (inferred: the probe shows `NSImage` returns its largest representation when the hint asks for more). Now it gets the right declaration and a 1× PNG that the renderer upsamples.
+
+Measured on a real 3 s take on the built-in Retina display (scale 2×). The stored arrow PNG is 280×400 pixels. The previous code path yields 56×80 for the same cursor (measured with a probe of the old `cgImage` call at a 2× hint). The declaration stayed at 56×80 with hotspot (10, 10), and `osrec inspect --timeline` loads the take.
 
 ## Open questions and risks
 

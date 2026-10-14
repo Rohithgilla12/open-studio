@@ -199,26 +199,10 @@ final class CursorWatcher {
         let cursor = NSCursor.currentSystem ?? NSCursor.current
         guard cursor !== lastCursor else { return }
         lastCursor = cursor
-        guard let rendered = render(cursor) else { return }
+        guard let rendered = CursorImage.render(cursor, displayScale: displayScale) else { return }
         guard rendered.digest != lastDigest else { return }
         lastDigest = rendered.digest
         lastImage = rendered.image
         sink(CapturedCursor(time: .now(), image: rendered.image))
-    }
-
-    private func render(_ cursor: NSCursor) -> (digest: SHA256Digest, image: CursorImage)? {
-        let image = cursor.image
-        var rect = CGRect(origin: .zero, size: image.size)
-        let hints = [NSImageRep.HintKey.ctm: NSAffineTransform(transform: AffineTransform(scale: displayScale))]
-        guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: hints),
-            let bytes = cgImage.dataProvider?.data as Data?
-        else { return nil }
-        let digest = SHA256.hash(data: bytes)
-        guard let png = NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:]) else { return nil }
-        let scale = image.size.width > 0 ? CGFloat(cgImage.width) / image.size.width : displayScale
-        return (digest, CursorImage(
-            png: png,
-            hotspot: WirePoint(x: cursor.hotSpot.x * scale, y: cursor.hotSpot.y * scale),
-            size: WireSize(width: Double(cgImage.width), height: Double(cgImage.height))))
     }
 }
