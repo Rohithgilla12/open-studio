@@ -246,6 +246,39 @@ All three converged on one `AVVideoComposition` shared by preview and export, `f
 
 ## Implementation reconciliation
 
+### D5: renderer, export, persistence, and preview
+
+Implemented on 2026-10-14 through `PreviewPlayer` (units 1 to 5 of the sequence). Each entry is a place where the code departs from the sketch, with why the design still holds.
+
+1. **`OutputFormat.canvasSize(for:padding:)` takes the padding.** Graft 1 makes the native canvas `source / (1 - 2 * padding)`, so the canvas depends on the style. The sketch's `canvasSize(for:)` had no way to know it. `RenderScene.make` passes `style.padding`. The format is still a plain value in `Edits`.
+2. **`CanvasLayout` snaps the fit to exactly 1 for native.** Rounding the native canvas to even pixels moves the fit off 1 by about 0.0002, which rounded the content width to 3457 for a 3456 px source. When the drift across the whole content is under one pixel the layout uses `k = 1`, so native is 1:1 as graft 1 intends. The test `nativeCanvasMakesUnzoomedPixelsOneToOne` pins it.
+3. **`FrameState`, `CameraState`, `CursorState`, and `CursorImageInfo` gain public initialisers.** The sketch's geometry tests need exact frame states without running a spring, and Timeline built those only internally. The types are unchanged otherwise.
+4. **`SceneInstruction`, `StyledCompositor`, `SceneAssets`, and `MovieComposition` are `@unchecked Sendable`.** NSObject, CIImage, and AVComposition are not marked Sendable in the SDK, though all are immutable or documented thread-safe as used here. Every stored property on the instruction and the assets is a `let`; the compositor's only mutable state stays behind its `Mutex`, as designed.
+5. **The compositor waits for a slot on a serial gate queue, not on the concurrent work queue.** The sketch had each queued request block on the semaphore inside the concurrent queue. A seek storm would then park one GCD thread per queued request. The gate holds one thread while waiting and hands each request to the concurrent queue once it has a slot. The property the design asked for holds: AVFoundation's calling thread never blocks. The generation is checked again just before rendering, per the review note.
+6. **The content is composited over the backdrop before the mask.** The snapped content rect is up to 0.5 px taller than the uniformly scaled viewport, so a sub-pixel row inside the mask had no content. Without this it rendered as a dark seam at the bottom edge; with it, the row shows backdrop. One extra `sourceOver` that Core Image fuses.
+7. **The dither runs on the CPU once per scene.** Core Image has no built-in dither, and a Metal `CIKernel` would need a compiled Metal library that SwiftPM does not build. `Backdrop.dithered` renders the backdrop recipe to a float bitmap in the 709 output space, quantises each channel with interleaved gradient noise keyed on the pixel position, and wraps the bytes as a `CGImage`. Deterministic, as graft 5 asks, and still one texture read per frame. Cost: about 2 million pixels at 1080p and 8 million at 4K per style change, in a tight loop.
+8. **`ProjectFile` carries `recordingID`** (graft 2) and `Edits.generated(for:)` names the defaults in one place, because `Project.open`, the mismatch path, and `osrec export --auto-zooms` all need them.
+9. **`Background` encodes with a `type` discriminator** (`{"type": "gradient", "gradient": {...}}`) instead of the synthesised `{"gradient": {"_0": ...}}`, because project.json is a file a person may edit by hand.
+10. **The writer's scratch files go to the system temp directory.** With `shouldOptimizeForNetworkUse`, AVAssetWriter writes a `.sb-` sidecar beside its output, which left a stray file in the take during the test. `directoryForTemporaryFiles` points it at `FileManager.temporaryDirectory`. The `.partial` file still sits beside the destination and `rename(2)` replaces atomically, per graft 4.
+11. **`ExportReport.warnings`** carries an unreadable microphone or a cursor PNG that fell back to the arrow, so `osrec export` can print them. The sketch had the warning but no channel for it.
+12. **`PreviewPlayer.refreshCurrentFrame` is deleted.** See open question 1.
+13. **The PSNR threshold is 38 dB, not 40.** Calibrated on the first run as the sketch asked: 38.9, 40.3, and 40.7 dB for Still against the HEVC export at three times, with a one-pixel shift of the same frame scoring 36.7, 37.5, and 38.0 dB. The test also requires the shifted control to score at least 1.5 dB lower.
+
+**Measured on 2026-10-14** (Apple M2 Max, macOS 27.0.1, `swift build -c release`, the D4 take `20261013-115409.osrec`, 3456x2234 HEVC, 10.000 s, 200 source frames; load average 5 to 11 from other sessions on the machine):
+
+| Output | Codec | Fps | Real time | Runs |
+|---|---|---|---|---|
+| 1920x1080 @ 60 | HEVC | 254.2 | 4.24x | 1 |
+| 1920x1080 @ 60 | H.264 | 294.6 | 4.91x | 1 |
+| 3840x2160 @ 60 | HEVC | 93.4, 97.6, 97.0, 97.9 | 1.56 to 1.63x | 4 |
+| 3840x2160 @ 60 | H.264 | 89.7 | 1.49x | 1 |
+| 3840x2160 @ 30 | HEVC | 96.1 | 3.20x | 1 |
+| 4114x2660 @ 60 (native) | HEVC | 75.7 | 1.26x | 1 |
+
+Every run wrote 600 frames (300 at 30 fps), `ffprobe` reports `r_frame_rate` 60/1, bt709 for primaries, transfer, and matrix, and presentation timestamps spaced exactly 1/60 s. The microphone take exports AAC 48 kHz mono starting at 0 with a 4.999979 s audio stream against 5.000 s of video. The limiter at 4K is the per-frame compose and encode chain, not the CPU and not the source decode: the process used 2.14 s user plus 3.06 s sys over 6.40 s wall (about 0.8 of a core), and halving the output rate to 30 fps halved the wall time at the same 96 fps, so the cost is per output frame. Whether the GPU render or the hardware encoder is the longer pole inside that chain was not profiled; the spike's render-only runs (125 fps at two in flight) say the encoder's share is real. The brief's bar of 1x for 4K60 is cleared with margin on this machine.
+
+**Open issue carried forward.** `RecordingFormatTests.healthSeesALockHeldThroughAnotherDescriptorInThisProcess` failed once under the full parallel `swift test` and passed three of three runs alone. It touches no file of this unit; it reads as a flock interaction between parallel tests in one process, which is not measured.
+
 ### D6: recorder cursor
 
 This settles open question 3. The recorder now rasterises each cursor at the largest density its image offers. `size` and `hotspot` stay in screen pixels, so the declaration and the format are unchanged.
@@ -259,7 +292,7 @@ Measured on a real 3 s take on the built-in Retina display (scale 2×). The stor
 
 ## Open questions and risks
 
-1. **Does a paused `AVPlayer` recompose its current frame when `videoComposition` is replaced?** If it does, `PreviewPlayer.refreshCurrentFrame` (a zero-tolerance seek to the current time) is deleted. I did not measure this. The first editor build should check it with a paused item and a style change.
+1. **Does a paused `AVPlayer` recompose its current frame when `videoComposition` is replaced?** Answered by measurement on 2026-10-14 (`PreviewSpec.harnessPausedPlayerAndACompositionSwap`): yes. With the item paused at 1 s and an `AVPlayerItemVideoOutput` attached, swapping in a composition with a different background produced a new frame within 300 ms with no pull and no seek (`hasNewPixelBuffer` true, three of three runs), and the frame carried the new background. `refreshCurrentFrame` is deleted. The measurement is headless through a video output, not through an `AVPlayerLayer` on screen; the first app build should glance at a paused preview after a style change, and if the layer does not redraw, the fix is a zero-tolerance seek to `player.currentTime()` after the swap when `player.rate == 0`.
 2. **How long are `screen.mov`'s keyframe intervals?** A long HEVC GOP makes each scrub decode from the previous keyframe. The recorder sets no `AVVideoMaxKeyFrameIntervalKey` today. If scrubbing stalls on long takes, should the recorder cap the interval at about 1 s, at some size cost?
 3. **Should the recorder store the largest cursor representation now?** It is a small change in `Recording` (encode the 280×400 representation and keep the declared size), and it is the only route to a crisp cursor at 2× in 4K. I propose it as step 4 of the sequence.
 4. **Should the app exclude itself from capture** with `SCContentFilter(display:excludingApplications:)` instead of hiding its window? Hiding is enough for v1, but a floating recording HUD would need exclusion, which means a `RecordingConfiguration` option.
