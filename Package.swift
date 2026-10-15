@@ -14,6 +14,7 @@ let package = Package(
         .library(name: "Recording", targets: ["Recording"]),
         .library(name: "Timeline", targets: ["Timeline"]),
         .library(name: "Render", targets: ["Render"]),
+        .library(name: "Studio", targets: ["Studio"]),
         .executable(name: "osrec", targets: ["osrec"]),
     ],
     dependencies: [
@@ -51,6 +52,16 @@ let package = Package(
                 .linkedFramework("ImageIO"),
             ]
         ),
+        .target(
+            name: "Studio",
+            dependencies: ["Recording", "RecordingFormat", "Render", "Timeline"],
+            swiftSettings: xcodeProjectDefaults,
+            linkerSettings: [
+                .linkedFramework("AppKit"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("SwiftUI"),
+            ]
+        ),
         .executableTarget(
             name: "osrec",
             dependencies: [
@@ -79,6 +90,11 @@ let package = Package(
         .testTarget(
             name: "RenderTests",
             dependencies: ["Render", "Timeline"],
+            swiftSettings: xcodeProjectDefaults
+        ),
+        .testTarget(
+            name: "StudioTests",
+            dependencies: ["Studio", "Recording", "Render", "Timeline"],
             swiftSettings: xcodeProjectDefaults
         ),
     ]
