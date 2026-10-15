@@ -99,8 +99,9 @@ struct PreviewSpec {
         let tap = Tap(preview.item)
         try await tap.ready(preview.item)
         preview.scrub(to: .seconds(1))
+        // The background pixel is blue at every time, so wait for the seek itself before looking at it.
+        #expect(await tap.wait { abs(RecordingTime(preview.player.currentTime()).seconds - 1) < 0.001 } != nil)
         #expect(await tap.wait { isBlue(tap.pixel(x: 10, y: 10, at: preview.player.currentTime())) } != nil)
-        #expect(abs(RecordingTime(preview.player.currentTime()).seconds - 1) < 0.001)
 
         project.edits.style = style(RGBColor(red: 0, green: 1, blue: 0))
         preview.show(project)
