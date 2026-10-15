@@ -4,3 +4,7 @@
 private/
 todo.md
 /*.osrec/
+App/Config/Local.xcconfig
+DerivedData/
+build/
+xcuserdata/

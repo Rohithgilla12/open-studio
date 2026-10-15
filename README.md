@@ -2,12 +2,13 @@
 
 A native macOS screen recorder that zooms in on your clicks. Written in Swift, with no Electron.
 
-This repository has the recording, timeline, and rendering core, and a command-line harness. The editor app is in progress.
+This repository has the recording, timeline, and rendering core, a command-line harness, and a first editor app.
 
 - **Recording** captures one display with ScreenCaptureKit and hides the cursor from the video. It also records input events, cursor images, and optionally the microphone. A crash or force-quit keeps everything written up to the last second.
 - **Timeline** reads a recording and works out the automatic zooms from your clicks. It then gives the camera position, zoom, and cursor state for any frame. Its answers are pure functions of time, so a renderer can ask from any thread in any order and get identical results.
 - **Render** draws each output frame: the screen zoomed to the camera, the cursor redrawn on top, and a background with padding, rounded corners, and a shadow. Preview, export, and stills share one compositor, so they produce the same pixels.
 - **osrec** is a command-line harness that drives these modules from a terminal.
+- **Studio** is the app: a take library, recording, a zoom editor with a live preview, and export. The Xcode project in `App/` wraps it in a bundle.
 
 ## Requirements
 
@@ -21,6 +22,23 @@ This repository has the recording, timeline, and rendering core, and a command-l
 swift build -c release
 swift test
 ```
+
+## Run the app
+
+```sh
+open App/OpenStudio.xcodeproj        # then Product > Run
+```
+
+Or from a terminal:
+
+```sh
+xcodebuild -project App/OpenStudio.xcodeproj -scheme OpenStudio -configuration Debug -derivedDataPath build build
+open build/Build/Products/Debug/OpenStudio.app
+```
+
+Takes go to `~/Movies/open-studio`. The app asks for Screen Recording and Input Monitoring, and for the microphone if you pick one. macOS applies the first two only after a relaunch, so the app offers one.
+
+The project signs to run locally by default. macOS ties a privacy grant to the app's signature, and an ad hoc signature changes on every build, so each rebuild asks again. To keep grants across rebuilds, copy `App/Config/Local.xcconfig.example` to `App/Config/Local.xcconfig` and set your team (a free personal team works). `tccutil reset ScreenCapture dev.openstudio.OpenStudio` clears a grant.
 
 ## Record a take
 

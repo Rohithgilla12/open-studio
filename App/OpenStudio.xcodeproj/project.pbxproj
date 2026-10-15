@@ -1,0 +1,233 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0A57D0010000000000000001 /* Studio in Frameworks */ = {isa = PBXBuildFile; productRef = 0A57D0090000000000000001 /* Studio */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0A57D0020000000000000001 /* OpenStudio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		0A57D0020000000000000002 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		0A57D0030000000000000001 /* Exceptions for "OpenStudio" folder in "OpenStudio" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				OpenStudio.entitlements,
+			);
+			target = 0A57D0060000000000000001 /* OpenStudio */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		0A57D0040000000000000001 /* OpenStudio */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0A57D0030000000000000001 /* Exceptions for "OpenStudio" folder in "OpenStudio" target */,
+			);
+			path = OpenStudio;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0A57D0050000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0A57D0010000000000000001 /* Studio in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0A57D0070000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				0A57D0040000000000000001 /* OpenStudio */,
+				0A57D0070000000000000003 /* Config */,
+				0A57D0070000000000000002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		0A57D0070000000000000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0A57D0020000000000000001 /* OpenStudio.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		0A57D0070000000000000003 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				0A57D0020000000000000002 /* Base.xcconfig */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0A57D0060000000000000001 /* OpenStudio */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0A57D00B0000000000000002 /* Build configuration list for PBXNativeTarget "OpenStudio" */;
+			buildPhases = (
+				0A57D0050000000000000002 /* Sources */,
+				0A57D0050000000000000001 /* Frameworks */,
+				0A57D0050000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				0A57D0040000000000000001 /* OpenStudio */,
+			);
+			name = OpenStudio;
+			packageProductDependencies = (
+				0A57D0090000000000000001 /* Studio */,
+			);
+			productName = OpenStudio;
+			productReference = 0A57D0020000000000000001 /* OpenStudio.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0A57D0080000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					0A57D0060000000000000001 = {
+						CreatedOnToolsVersion = 27.0;
+					};
+				};
+			};
+			buildConfigurationList = 0A57D00B0000000000000001 /* Build configuration list for PBXProject "OpenStudio" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 0A57D0070000000000000001;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				0A57D00A0000000000000001 /* XCLocalSwiftPackageReference ".." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0A57D0070000000000000002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0A57D0060000000000000001 /* OpenStudio */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0A57D0050000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0A57D0050000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0A57D00C0000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		0A57D00C0000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		0A57D00C0000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0A57D0020000000000000002 /* Base.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		0A57D00C0000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0A57D0020000000000000002 /* Base.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0A57D00B0000000000000001 /* Build configuration list for PBXProject "OpenStudio" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0A57D00C0000000000000001 /* Debug */,
+				0A57D00C0000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0A57D00B0000000000000002 /* Build configuration list for PBXNativeTarget "OpenStudio" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0A57D00C0000000000000003 /* Debug */,
+				0A57D00C0000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		0A57D00A0000000000000001 /* XCLocalSwiftPackageReference ".." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0A57D0090000000000000001 /* Studio */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Studio;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 0A57D0080000000000000001 /* Project object */;
+}
