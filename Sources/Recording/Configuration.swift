@@ -33,13 +33,13 @@ public struct RecordingConfiguration: Sendable, Equatable {
     }
 }
 
-public enum DisplaySelection: Sendable, Equatable {
+public enum DisplaySelection: Sendable, Hashable {
     /// The display with the menu bar when `start` is called.
     case main
     case id(CGDirectDisplayID)
 }
 
-public enum MicrophoneSelection: Sendable, Equatable {
+public enum MicrophoneSelection: Sendable, Hashable {
     case none
     case systemDefault
     /// `AVCaptureDevice.uniqueID`.

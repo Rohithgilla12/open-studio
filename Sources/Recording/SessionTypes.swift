@@ -5,6 +5,13 @@ public struct FinishedRecording: Sendable, Equatable {
     public let duration: Duration
     public let hasMicrophone: Bool
     public let termination: Termination
+
+    public init(directory: URL, duration: Duration, hasMicrophone: Bool, termination: Termination) {
+        self.directory = directory
+        self.duration = duration
+        self.hasMicrophone = hasMicrophone
+        self.termination = termination
+    }
 }
 
 public enum Termination: Sendable, Equatable {
