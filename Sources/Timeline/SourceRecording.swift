@@ -20,6 +20,10 @@ public struct SourceRecording: Sendable {
     /// nil when the manifest lists no microphone.
     public let microphoneMovie: URL?
     public var hasMicrophone: Bool { microphoneMovie != nil }
+    /// nil when the manifest lists no system audio. Media time 0 is recording time 0, as for the
+    /// microphone.
+    public let systemAudioMovie: URL?
+    public var hasSystemAudio: Bool { systemAudioMovie != nil }
     /// nil when the manifest lists no camera. Media time 0 is recording time 0, as for the
     /// microphone; the track may start later and end earlier than the screen.
     public let cameraMovie: URL?
@@ -155,6 +159,7 @@ public struct SourceRecording: Sendable {
         self.area = area
         screenMovie = metadata.layout.screen
         microphoneMovie = manifest.microphone == nil ? nil : metadata.layout.microphone
+        systemAudioMovie = manifest.systemAudio == nil ? nil : metadata.layout.systemAudio
         cameraMovie = manifest.camera == nil ? nil : metadata.layout.camera
         termination = SourceTermination(wireTermination)
         self.pointer = pointer
