@@ -167,7 +167,7 @@ struct StyleInspector: View {
                     CameraControls(editor: editor)
                 }
             }
-            let sources = AudioSource.allCases.filter { $0.movie(in: editor.project.source) != nil }
+            let sources = AudioSource.recorded(in: editor.project.source)
             if !sources.isEmpty {
                 Section("Audio") {
                     ForEach(sources, id: \.self) { source in

@@ -166,7 +166,6 @@ struct ProjectFile: Codable {
     var settings: TimelineSettings
     var style: Style
     var output: OutputFormat
-    /// Absent in a file saved before levels existed.
     var audio: AudioLevels?
 
     static func url(in take: URL) -> URL { take.appending(path: fileName, directoryHint: .notDirectory) }

@@ -51,7 +51,7 @@ struct ExportCommand: AsyncParsableCommand {
         if muteSystem { project.edits.audio.systemAudio.isMuted = true }
         for warning in project.source.loadWarnings { print("load warning: \(warning)") }
         let camera = !project.source.hasCamera ? "no camera" : project.edits.style.camera.isVisible ? "camera shown" : "camera hidden"
-        let audio = AudioSource.allCases.filter { $0.movie(in: project.source) != nil }.map { source in
+        let audio = AudioSource.recorded(in: project.source).map { source in
             let level = project.edits.audio[source]
             return "\(source.label) \(level.isMuted ? "muted" : String(format: "at %.2f", level.volume))"
         }

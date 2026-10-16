@@ -8,11 +8,8 @@ import Timeline
 ///
 /// `@unchecked` because AVComposition is immutable once built but not marked Sendable.
 struct MovieComposition: @unchecked Sendable {
-    /// Screen video track and, when recorded, the audio and camera tracks, all inserted at time 0,
-    /// since media time 0 in every file is recording time 0.
     let asset: AVComposition
     let screenTrackID: CMPersistentTrackID
-    /// One track per source the take has, less any whose movie could not be read (see `warnings`).
     let audioTracks: [AudioSource: CMPersistentTrackID]
     /// nil when the take has no camera, or its movie could not be read (see `warnings`).
     let camera: CameraFootage?
@@ -102,8 +99,6 @@ struct MovieComposition: @unchecked Sendable {
         return wanted.compactMap { id in asset.tracks.first { $0.trackID == id } }
     }
 
-    /// The levels as AVFoundation applies them. The preview's item and the export's reader both take
-    /// this value, so what plays is what exports. nil when the take has no audio.
     func audioMix(_ levels: AudioLevels) -> AVAudioMix? {
         guard !audioTracks.isEmpty else { return nil }
         let mix = AVMutableAudioMix()
@@ -117,8 +112,6 @@ struct MovieComposition: @unchecked Sendable {
         return mix
     }
 
-    /// The tracks that make a sound at these levels. A silent one is left out of the export's
-    /// reader, so it is never decoded; with none left, the export has no audio track.
     func audibleTracks(_ levels: AudioLevels) -> [AVAssetTrack] {
         AudioSource.allCases.compactMap { source in
             guard let id = audioTracks[source], levels[source].gain > 0 else { return nil }

@@ -156,7 +156,6 @@ actor CaptureSink {
         var microphone: TrackOutcome?
         var systemAudio: TrackOutcome?
         var camera: TrackOutcome?
-        /// Found while finishing, when the session no longer passes on reported warnings.
         var warnings: [RecordingWarning] = []
     }
 

@@ -287,7 +287,6 @@ private final class SessionInlet: Sendable {
 }
 
 extension RecordingWarning {
-    /// The manifest's form, for the warnings that outlive the session.
     var wire: ManifestWarning? {
         switch self {
         case .microphoneLost(let at, let message): .microphoneLost(at: MediaTime(at), message: message)

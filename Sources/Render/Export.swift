@@ -76,12 +76,9 @@ public enum Export {
 
         let audioTracks = movie.audibleTracks(project.edits.audio)
         if !audioTracks.isEmpty {
-            // Mixed and decoded to LPCM, then re-encoded as one track, which trims the audio exactly
-            // at the video's end without AAC priming or packet-boundary errors. Stereo as soon as one
-            // source is, so a take without system audio keeps its microphone's channels.
-            let channels = audioTracks.flatMap(\.formatDescriptions)
-                .compactMap { ($0 as! CMFormatDescription).audioStreamBasicDescription?.mChannelsPerFrame }
-                .max().map { min(Int($0), 2) } ?? 1
+            // Decoded to LPCM and re-encoded, which trims the audio exactly at the video's end without
+            // AAC priming or packet-boundary errors.
+            let channels = mixedChannelCount(of: audioTracks)
             let audioOutput = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: [
                 AVFormatIDKey: kAudioFormatLinearPCM,
                 AVSampleRateKey: 48_000,
@@ -165,6 +162,13 @@ public enum Export {
         return ExportReport(
             destination: destination, frames: video.count, duration: RecordingTime(movie.duration), wallSeconds: wall,
             bytes: bytes, warnings: movie.warnings + scene.assets.warnings)
+    }
+
+    /// Stereo as soon as one source is, so a take without system audio keeps its microphone's channels.
+    private static func mixedChannelCount(of tracks: [AVAssetTrack]) -> Int {
+        let channels = tracks.flatMap(\.formatDescriptions)
+            .compactMap { ($0 as! CMFormatDescription).audioStreamBasicDescription?.mChannelsPerFrame }
+        return channels.max().map { min(Int($0), 2) } ?? 1
     }
 
     /// Shared stop signal between the task that owns the export and the pumps on their dispatch

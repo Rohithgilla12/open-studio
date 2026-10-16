@@ -38,7 +38,6 @@ CMAudioFormatDescriptionCreate(
     allocator: nil, asbd: &asbd, layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil,
     formatDescriptionOut: &format)
 
-// A tone that pulses on for half of every second, so sync against the screen can be heard and seen.
 let frames = 1024
 var frame = Int(from * Double(rate))
 while frame < Int(seconds * Double(rate)) {

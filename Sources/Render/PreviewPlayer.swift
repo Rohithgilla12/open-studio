@@ -3,8 +3,7 @@ import Foundation
 import Timeline
 
 /// Plays a project with its edits applied. Owns the rule for getting an edit onto the screen, so
-/// no view has to know it: build a new scene and swap the item's video composition, or for a level
-/// change swap only its audio mix. The player and item are never rebuilt.
+/// no view has to know it. The player and item are never rebuilt.
 @MainActor
 public final class PreviewPlayer {
     /// For an `AVPlayerLayer`. Callers drive transport through the methods below, not this.
@@ -13,8 +12,6 @@ public final class PreviewPlayer {
     let item: AVPlayerItem
     private let movie: MovieComposition
     private var scene: RenderScene
-    /// The edits `scene` was built from, with the levels left out: a level change alone must not
-    /// swap the video composition, which drops the frames AVFoundation has rendered ahead.
     private var picture: Edits
     private var audio: AudioLevels
     private var pending: Project?

@@ -139,7 +139,6 @@ enum AudioSamples {
         return directory.appending(path: "system-audio.mov", directoryHint: .notDirectory)
     }
 
-    /// A stereo 1 kHz tone whose phase follows the host time, so a buffer is the same wherever it is cut.
     static func tone(at pts: HostTime, frames: Int, layout: Layout) throws -> CMSampleBuffer {
         let channels = 2
         let float = layout != .int16Interleaved
@@ -184,7 +183,6 @@ enum AudioSamples {
         return try #require(sample)
     }
 
-    /// 1024-frame buffers covering each range of seconds after the origin, and nothing in between.
     static func deliver(to writer: AudioTrackWriter, origin: HostTime, layout: Layout, during ranges: [Range<Double>]) async throws {
         for range in ranges {
             var frame = Int(range.lowerBound * Double(sampleRate))
@@ -202,7 +200,6 @@ enum AudioSamples {
         }
     }
 
-    /// Mean square of the first channel per 10 ms of movie time.
     struct Energy: CustomStringConvertible {
         var bins: [Double]
         static let binSeconds = 0.01
@@ -212,12 +209,13 @@ enum AudioSamples {
             return slice.reduce(0, +) / Double(max(1, slice.count))
         }
 
+        static let audible = 0.05
+
         func isLoud(_ range: Range<Double>) -> Bool { mean(range) > 0.1 }
         func isQuiet(_ range: Range<Double>) -> Bool { mean(range) < 0.001 }
 
-        /// The start of the first loud 10 ms at or after `t`.
         func onset(after t: Double) -> Double {
-            let first = bins.indices.first { Double($0) * Self.binSeconds >= t && bins[$0] > 0.05 }
+            let first = bins.indices.first { Double($0) * Self.binSeconds >= t && bins[$0] > Self.audible }
             return first.map { Double($0) * Self.binSeconds } ?? .infinity
         }
 
@@ -268,7 +266,6 @@ enum AudioSamples {
         }
         _ = try await screen.finish(at: origin + .seconds(1))
         if withSystemAudioMovie {
-            // Never finished, as when the recorder dies: only the fragments already written remain.
             let audio = try AudioTrackWriter(url: layout.systemAudio, channels: 2)
             try audio.start(at: origin)
             try await deliver(to: audio, origin: origin, layout: .floatNonInterleaved, during: [0..<2.5])

@@ -69,8 +69,6 @@ public enum FormatVersion {
     /// Added `camera`. An older reader would export the take without the person in it, and an older
     /// recovery would rewrite the manifest without the key, losing the camera for good.
     static let camera = 3
-    /// Added `systemAudio`. An older reader would export the take without its sound, and an older
-    /// recovery would rewrite the manifest without the key, losing the sound for good.
     static let systemAudio = 4
     public static let identifier = "open-studio.recording"
 }

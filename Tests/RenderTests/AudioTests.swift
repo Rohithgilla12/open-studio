@@ -5,12 +5,9 @@ import Testing
 @testable import Render
 import Timeline
 
-/// A take whose microphone plays 440 Hz from 0.5 s and whose system audio plays 1 kHz from 1 s,
-/// exported and read back, so each source's presence, level, and start can be measured apart.
 struct AudioMixSpec {
     static let microphone = Fixture.Tone(frequency: 440, from: 0.5, until: 2, channels: 1)
     static let systemAudio = Fixture.Tone(frequency: 1000, from: 1, until: 2, channels: 2)
-    /// One 1024-frame buffer at 48 kHz.
     static let oneBuffer = 1024.0 / 48_000
 
     static func take() async throws -> URL {
@@ -189,7 +186,6 @@ struct AudioLevelsProjectSpec {
     }
 }
 
-/// Decoded PCM of an export's audio track, as 48 kHz float stereo.
 struct Signal {
     var samples: [[Float]]
     var sourceChannels: Int
@@ -228,16 +224,12 @@ struct Signal {
         return Signal(samples: samples, sourceChannels: sourceChannels)
     }
 
-    /// The tone's peak amplitude over a window, by the Goertzel algorithm. Windows are whole
-    /// multiples of 50 ms, which hold whole cycles of both 440 Hz and 1 kHz, so neither leaks into
-    /// the other's bin.
     func amplitude(_ frequency: Double, in range: Range<Double>, channel: Int = 0) -> Double {
         let lower = Int(range.lowerBound * Self.rate), upper = min(samples[channel].count, Int(range.upperBound * Self.rate))
         guard upper > lower else { return 0 }
         return Self.goertzel(samples[channel][lower..<upper], frequency)
     }
 
-    /// The start of the first 10 ms window after `t` where the tone reaches half its steady level.
     func onset(_ frequency: Double, after t: Double, channel: Int = 0) -> Double {
         let steady = amplitude(frequency, in: 1.2..<1.8, channel: channel)
         let window = Int(0.01 * Self.rate), hop = Int(0.0025 * Self.rate)
@@ -272,8 +264,6 @@ extension Fixture {
         var channels: Int
     }
 
-    /// Writes the tone as the recorder writes a source: AAC at 48 kHz, media time 0 at recording
-    /// time 0, the first sample at `from`. Adds the source to the manifest.
     static func addAudio(_ tone: Tone, as source: AudioSource, to take: URL) async throws {
         let name = source == .microphone ? "microphone.mov" : "system-audio.mov"
         let writer = try AVAssetWriter(outputURL: take.appending(path: name, directoryHint: .notDirectory), fileType: .mov)
