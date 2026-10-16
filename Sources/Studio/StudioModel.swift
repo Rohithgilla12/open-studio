@@ -65,11 +65,14 @@ public final class StudioModel {
     }
 
     public var configuration: RecordingConfiguration? {
-        captureTarget.map { RecordingConfiguration(outputDirectory: library, target: $0, microphone: preferences.microphone) }
+        captureTarget.map {
+            RecordingConfiguration(outputDirectory: library, target: $0, microphone: preferences.microphone, camera: preferences.camera)
+        }
     }
 
     public var missingPermissions: [Permission] {
-        permissions.missing(for: RecordingConfiguration(outputDirectory: library, microphone: preferences.microphone))
+        permissions.missing(for: RecordingConfiguration(
+            outputDirectory: library, microphone: preferences.microphone, camera: preferences.camera))
     }
 
     public enum Readiness: Equatable {

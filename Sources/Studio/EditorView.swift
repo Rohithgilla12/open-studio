@@ -162,6 +162,11 @@ struct StyleInspector: View {
                     get: { editor.project.edits.style.shadow.opacity > 0 },
                     set: { on in editor.apply("Change Shadow") { $0.style.shadow = on ? .soft : .none } }))
             }
+            if editor.project.source.hasCamera {
+                Section("Camera") {
+                    CameraControls(editor: editor)
+                }
+            }
             Section("Zoom") {
                 if let id = editor.selection, let segment = editor.zooms.first(where: { $0.id == id }) {
                     LabeledContent("Scale") {
@@ -187,6 +192,56 @@ struct StyleInspector: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+struct CameraControls: View {
+    let editor: Editor
+
+    private var overlay: CameraOverlay { editor.project.edits.style.camera }
+
+    var body: some View {
+        Toggle("Show camera", isOn: binding(\.isVisible, "Show Camera"))
+        Group {
+            Picker("Corner", selection: binding(\.corner, "Move Camera")) {
+                ForEach(CameraOverlay.Corner.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            EditSlider(
+                editor: editor, title: "Size", range: CameraOverlay.sizeRange, actionName: "Resize Camera",
+                value: \.style.camera.size)
+            Picker("Shape", selection: binding(\.shape, "Change Camera Shape")) {
+                ForEach(CameraOverlay.Shape.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            Toggle("Mirror", isOn: binding(\.mirrored, "Mirror Camera"))
+        }
+        .disabled(!overlay.isVisible)
+    }
+
+    private func binding<Value: Equatable>(_ key: WritableKeyPath<CameraOverlay, Value>, _ actionName: String) -> Binding<Value> {
+        Binding(
+            get: { overlay[keyPath: key] },
+            set: { new in editor.apply(actionName) { $0.style.camera[keyPath: key] = new } })
+    }
+}
+
+extension CameraOverlay.Corner {
+    var label: String {
+        switch self {
+        case .topLeft: "Top left"
+        case .topRight: "Top right"
+        case .bottomLeft: "Bottom left"
+        case .bottomRight: "Bottom right"
+        }
+    }
+}
+
+extension CameraOverlay.Shape {
+    var label: String {
+        switch self {
+        case .circle: "Circle"
+        case .roundedRectangle: "Rectangle"
+        }
     }
 }
 

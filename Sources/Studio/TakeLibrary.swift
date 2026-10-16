@@ -94,16 +94,18 @@ public enum CaptureKind: String, Sendable, CaseIterable, Identifiable {
 public struct RecordingPreferences: Sendable, Equatable {
     public var display: DisplaySelection
     public var microphone: MicrophoneSelection
+    public var camera: CameraSelection
     public var captureKind: CaptureKind
     /// The last area chosen on each display, in display points, origin top-left.
     public var areas: [CGDirectDisplayID: CGRect]
 
     public init(
-        display: DisplaySelection, microphone: MicrophoneSelection, captureKind: CaptureKind = .screen,
-        areas: [CGDirectDisplayID: CGRect] = [:]
+        display: DisplaySelection, microphone: MicrophoneSelection, camera: CameraSelection = .none,
+        captureKind: CaptureKind = .screen, areas: [CGDirectDisplayID: CGRect] = [:]
     ) {
         self.display = display
         self.microphone = microphone
+        self.camera = camera
         self.captureKind = captureKind
         self.areas = areas
     }
@@ -118,6 +120,7 @@ public struct RecordingPreferences: Sendable, Equatable {
 
     private static let displayKey = "recording.display"
     private static let microphoneKey = "recording.microphone"
+    private static let cameraKey = "recording.camera"
     private static let captureKindKey = "recording.captureKind"
     private static let areasKey = "recording.areas"
 
@@ -129,13 +132,18 @@ public struct RecordingPreferences: Sendable, Equatable {
         case let stored? where stored.hasPrefix("device:"): .device(uniqueID: String(stored.dropFirst("device:".count)))
         default: .none
         }
+        let camera: CameraSelection = switch defaults.string(forKey: cameraKey) {
+        case "default": .systemDefault
+        case let stored? where stored.hasPrefix("device:"): .device(uniqueID: String(stored.dropFirst("device:".count)))
+        default: .none
+        }
         let captureKind = defaults.string(forKey: captureKindKey).flatMap(CaptureKind.init(rawValue:)) ?? .screen
         let stored = defaults.dictionary(forKey: areasKey) as? [String: [Double]] ?? [:]
         let areas = stored.reduce(into: [CGDirectDisplayID: CGRect]()) { areas, entry in
             guard let id = CGDirectDisplayID(entry.key), let area = CGRect(components: entry.value) else { return }
             areas[id] = area
         }
-        return RecordingPreferences(display: display, microphone: microphone, captureKind: captureKind, areas: areas)
+        return RecordingPreferences(display: display, microphone: microphone, camera: camera, captureKind: captureKind, areas: areas)
     }
 
     func save(to defaults: UserDefaults = .standard) {
@@ -147,6 +155,11 @@ public struct RecordingPreferences: Sendable, Equatable {
         case .none: defaults.set("none", forKey: Self.microphoneKey)
         case .systemDefault: defaults.set("default", forKey: Self.microphoneKey)
         case .device(let uniqueID): defaults.set("device:\(uniqueID)", forKey: Self.microphoneKey)
+        }
+        switch camera {
+        case .none: defaults.set("none", forKey: Self.cameraKey)
+        case .systemDefault: defaults.set("default", forKey: Self.cameraKey)
+        case .device(let uniqueID): defaults.set("device:\(uniqueID)", forKey: Self.cameraKey)
         }
         defaults.set(captureKind.rawValue, forKey: Self.captureKindKey)
         defaults.set(

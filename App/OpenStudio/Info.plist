@@ -26,6 +26,10 @@
 	<string>public.app-category.video</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Open Studio records your camera beside the screen when you choose one, and shows you in a corner of the take.</string>
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>MIT licence</string>
 	<key>NSMicrophoneUsageDescription</key>

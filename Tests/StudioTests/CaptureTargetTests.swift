@@ -31,6 +31,19 @@ struct TargetSpec {
         #expect(calls.configurations.map(\.target) == [.display(.id(3))])
     }
 
+    @Test func theChosenCameraReachesTheRecording() async {
+        let scratch = ScratchDefaults()
+        defer { scratch.remove() }
+        let calls = Calls()
+        let model = model(scratch, calls, kind: .screen)
+        #expect(model.configuration?.camera == CameraSelection.none)
+        model.preferences.camera = .device(uniqueID: "camera-1")
+
+        await model.record()
+        #expect(calls.configurations.map(\.camera) == [.device(uniqueID: "camera-1")])
+        #expect(RecordingPreferences.load(from: scratch.defaults).camera == .device(uniqueID: "camera-1"))
+    }
+
     @Test func areaRecordsTheLastAreaOfTheChosenDisplayOnly() {
         let scratch = ScratchDefaults()
         defer { scratch.remove() }

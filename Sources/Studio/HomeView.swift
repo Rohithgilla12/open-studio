@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Recording
 import SwiftUI
 
@@ -6,6 +7,7 @@ struct HomeView: View {
     @Bindable var model: StudioModel
     @State private var displays: [DisplayChoice] = []
     @State private var microphones: [MicrophoneInfo] = []
+    @State private var cameras: [CameraInfo] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -13,7 +15,7 @@ struct HomeView: View {
             if !model.missingPermissions.isEmpty || model.relaunchSuggested {
                 PermissionBanner(model: model)
             }
-            TargetPicker(model: model, displays: displays, microphones: microphones)
+            TargetPicker(model: model, displays: displays, microphones: microphones, cameras: cameras)
             Divider()
             HStack {
                 Text("Takes").font(.title3.weight(.semibold))
@@ -38,13 +40,21 @@ struct HomeView: View {
         .onAppear {
             displays = DisplayChoice.current()
             microphones = CaptureSources.microphones()
+            cameras = CaptureSources.cameras()
             model.refreshWindows()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             displays = DisplayChoice.current()
             microphones = CaptureSources.microphones()
+            cameras = CaptureSources.cameras()
             model.refreshWindows()
             Task { await model.refreshTakes() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVCaptureDevice.wasConnectedNotification)) { _ in
+            cameras = CaptureSources.cameras()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVCaptureDevice.wasDisconnectedNotification)) { _ in
+            cameras = CaptureSources.cameras()
         }
         .onChange(of: model.preferences.captureKind) {
             model.refreshWindows()
@@ -148,6 +158,7 @@ struct TargetPicker: View {
     @Bindable var model: StudioModel
     let displays: [DisplayChoice]
     let microphones: [MicrophoneInfo]
+    let cameras: [CameraInfo]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -159,7 +170,7 @@ struct TargetPicker: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(maxWidth: 360)
-            SourcePickers(preferences: $model.preferences, displays: displays, microphones: microphones)
+            SourcePickers(preferences: $model.preferences, displays: displays, microphones: microphones, cameras: cameras)
             switch model.preferences.captureKind {
             case .screen: EmptyView()
             case .area: AreaSummary(model: model)
@@ -242,6 +253,7 @@ struct SourcePickers: View {
     @Binding var preferences: RecordingPreferences
     let displays: [DisplayChoice]
     let microphones: [MicrophoneInfo]
+    let cameras: [CameraInfo]
 
     var body: some View {
         HStack(spacing: 24) {
@@ -262,7 +274,25 @@ struct SourcePickers: View {
                 }
             }
             .frame(maxWidth: 320)
+            Picker("Camera", selection: $preferences.camera) {
+                Text("None").tag(CameraSelection.none)
+                ForEach(cameras) { camera in
+                    Text(camera.name).tag(CameraSelection.device(uniqueID: camera.id))
+                }
+                if let missing = missingCamera {
+                    Text("Disconnected camera").tag(missing)
+                }
+            }
+            .frame(maxWidth: 320)
+            .help(missingCamera == nil ? "Recorded beside the screen and shown in a corner of the export" : "Connect the camera again, or choose another")
         }
+    }
+
+    /// The saved choice when its camera is not connected, so the picker still has a row for it and
+    /// Record reports the missing camera instead of silently recording without one.
+    private var missingCamera: CameraSelection? {
+        guard case .device(let id) = preferences.camera, !cameras.contains(where: { $0.id == id }) else { return nil }
+        return preferences.camera
     }
 }
 

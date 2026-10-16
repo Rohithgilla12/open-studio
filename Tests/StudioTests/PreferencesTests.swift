@@ -17,6 +17,17 @@ struct PreferencesSpec {
         let loaded = RecordingPreferences.load(from: scratch.defaults)
         #expect(loaded.captureKind == .screen)
         #expect(loaded.areas.isEmpty)
+        #expect(loaded.camera == .none)
+    }
+
+    @Test(arguments: [CameraSelection.none, .systemDefault, .device(uniqueID: "AFEF62F3-B9C9-4FA0-AD92-8C6C00000001")])
+    func theCameraChoiceSurvivesARoundTrip(camera: CameraSelection) {
+        let scratch = ScratchDefaults()
+        defer { scratch.remove() }
+        var saved = RecordingPreferences(display: .main, microphone: .none)
+        saved.camera = camera
+        saved.save(to: scratch.defaults)
+        #expect(RecordingPreferences.load(from: scratch.defaults).camera == camera)
     }
 
     @Test(arguments: CaptureKind.allCases)
@@ -24,7 +35,7 @@ struct PreferencesSpec {
         let scratch = ScratchDefaults()
         defer { scratch.remove() }
         let saved = RecordingPreferences(
-            display: .id(7), microphone: .systemDefault, captureKind: kind,
+            display: .id(7), microphone: .systemDefault, camera: .device(uniqueID: "camera-1"), captureKind: kind,
             areas: [7: CGRect(x: 100, y: 80, width: 1280, height: 720), 9: CGRect(x: 0.5, y: 0, width: 64.25, height: 32)])
         saved.save(to: scratch.defaults)
         #expect(RecordingPreferences.load(from: scratch.defaults) == saved)
