@@ -23,6 +23,8 @@ struct LoadSpec {
         #expect(source.termination == .userStopped)
         #expect(source.hasMicrophone == false)
         #expect(source.microphoneMovie == nil)
+        #expect(source.hasCamera == false)
+        #expect(source.cameraMovie == nil)
         #expect(source.screenMovie == layout.screen)
         #expect(source.loadWarnings.isEmpty)
         #expect(source.pointer.count == 12 * 60 + 2 * Fixture.clickSeconds.count)
@@ -69,6 +71,21 @@ struct LoadSpec {
         let source = try SourceRecording.load(from: directory)
         #expect(source.hasMicrophone)
         #expect(source.microphoneMovie == RecordingLayout(directory: directory).microphone)
+    }
+
+    @Test func cameraMovieFollowsTheManifest() throws {
+        let directory = try Fixture.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var generated = try Fixture.generate()
+        generated.manifest = try Fixture.editJSON(generated.manifest) {
+            $0["formatVersion"] = 3
+            $0["camera"] = ["deviceName": "Fixture Camera", "pixelWidth": 1280, "pixelHeight": 720, "frameRate": 30]
+        }
+        try Fixture.write(generated, to: directory)
+        let source = try SourceRecording.load(from: directory)
+        #expect(source.hasCamera)
+        #expect(source.cameraMovie == RecordingLayout(directory: directory).camera)
+        #expect(source.hasMicrophone == false)
     }
 
     @Test func rejectsNewerFormatVersion() throws {
