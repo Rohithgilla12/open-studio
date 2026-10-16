@@ -99,11 +99,13 @@ struct MovieComposition: @unchecked Sendable {
         return wanted.compactMap { id in asset.tracks.first { $0.trackID == id } }
     }
 
-    func audioMix(_ levels: AudioLevels) -> AVAudioMix? {
-        guard !audioTracks.isEmpty else { return nil }
+    /// The export passes `audibleOnly`, because a reader output refuses a mix that names a track it
+    /// does not read.
+    func audioMix(_ levels: AudioLevels, audibleOnly: Bool = false) -> AVAudioMix? {
+        let sources = audioSources(levels, audibleOnly: audibleOnly)
+        guard !sources.isEmpty else { return nil }
         let mix = AVMutableAudioMix()
-        mix.inputParameters = AudioSource.allCases.compactMap { source in
-            guard let id = audioTracks[source] else { return nil }
+        mix.inputParameters = sources.map { source, id in
             let parameters = AVMutableAudioMixInputParameters()
             parameters.trackID = id
             parameters.setVolume(Float(levels[source].gain), at: .zero)
@@ -113,9 +115,13 @@ struct MovieComposition: @unchecked Sendable {
     }
 
     func audibleTracks(_ levels: AudioLevels) -> [AVAssetTrack] {
+        audioSources(levels, audibleOnly: true).compactMap { _, id in asset.tracks.first { $0.trackID == id } }
+    }
+
+    private func audioSources(_ levels: AudioLevels, audibleOnly: Bool) -> [(AudioSource, CMPersistentTrackID)] {
         AudioSource.allCases.compactMap { source in
-            guard let id = audioTracks[source], levels[source].gain > 0 else { return nil }
-            return asset.tracks.first { $0.trackID == id }
+            guard let id = audioTracks[source], !audibleOnly || levels[source].gain > 0 else { return nil }
+            return (source, id)
         }
     }
 

@@ -87,7 +87,7 @@ public enum Export {
                 AVLinearPCMIsFloatKey: false,
                 AVLinearPCMIsNonInterleaved: false,
             ])
-            audioOutput.audioMix = movie.audioMix(project.edits.audio)
+            audioOutput.audioMix = movie.audioMix(project.edits.audio, audibleOnly: true)
             let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
                 AVFormatIDKey: kAudioFormatMPEG4AAC,
                 AVSampleRateKey: 48_000,
