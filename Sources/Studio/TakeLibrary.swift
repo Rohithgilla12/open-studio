@@ -75,17 +75,54 @@ enum TakeLibrary {
     }
 }
 
+/// What Record captures. The raw values are what `UserDefaults` stores and what the
+/// `-CaptureTarget` launch argument names.
+public enum CaptureKind: String, Sendable, CaseIterable, Identifiable {
+    case screen
+    case area
+    case window
+
+    public var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .screen: "Entire Screen"
+        case .area: "Area"
+        case .window: "Window"
+        }
+    }
+}
+
 public struct RecordingPreferences: Sendable, Equatable {
     public var display: DisplaySelection
     public var microphone: MicrophoneSelection
+    public var captureKind: CaptureKind
+    /// The last area chosen on each display, in display points, origin top-left. A window is not
+    /// remembered, because its id dies with the window.
+    public var areas: [CGDirectDisplayID: CGRect]
 
-    public init(display: DisplaySelection, microphone: MicrophoneSelection) {
+    public init(
+        display: DisplaySelection, microphone: MicrophoneSelection, captureKind: CaptureKind = .screen,
+        areas: [CGDirectDisplayID: CGRect] = [:]
+    ) {
         self.display = display
         self.microphone = microphone
+        self.captureKind = captureKind
+        self.areas = areas
+    }
+
+    public func area(on display: DisplaySelection) -> CGRect? {
+        areas[display.resolvedID]
+    }
+
+    public mutating func setArea(_ area: CGRect, on display: DisplaySelection) {
+        areas[display.resolvedID] = area
     }
 
     private static let displayKey = "recording.display"
     private static let microphoneKey = "recording.microphone"
+    private static let captureKindKey = "recording.captureKind"
+    private static let areasKey = "recording.areas"
 
     static func load(from defaults: UserDefaults = .standard) -> RecordingPreferences {
         let display: DisplaySelection =
@@ -95,7 +132,13 @@ public struct RecordingPreferences: Sendable, Equatable {
         case let stored? where stored.hasPrefix("device:"): .device(uniqueID: String(stored.dropFirst("device:".count)))
         default: .none
         }
-        return RecordingPreferences(display: display, microphone: microphone)
+        let captureKind = defaults.string(forKey: captureKindKey).flatMap(CaptureKind.init(rawValue:)) ?? .screen
+        let stored = defaults.dictionary(forKey: areasKey) as? [String: [Double]] ?? [:]
+        let areas = stored.reduce(into: [CGDirectDisplayID: CGRect]()) { areas, entry in
+            guard let id = CGDirectDisplayID(entry.key), let area = CGRect(components: entry.value) else { return }
+            areas[id] = area
+        }
+        return RecordingPreferences(display: display, microphone: microphone, captureKind: captureKind, areas: areas)
     }
 
     func save(to defaults: UserDefaults = .standard) {
@@ -108,6 +151,40 @@ public struct RecordingPreferences: Sendable, Equatable {
         case .systemDefault: defaults.set("default", forKey: Self.microphoneKey)
         case .device(let uniqueID): defaults.set("device:\(uniqueID)", forKey: Self.microphoneKey)
         }
+        defaults.set(captureKind.rawValue, forKey: Self.captureKindKey)
+        defaults.set(
+            Dictionary(uniqueKeysWithValues: areas.map { (String($0.key), [$0.value.minX, $0.value.minY, $0.value.width, $0.value.height]) }),
+            forKey: Self.areasKey)
+    }
+}
+
+extension DisplaySelection {
+    /// `.main` is the display with the menu bar now, as `RecordingSession.start` resolves it.
+    var resolvedID: CGDirectDisplayID {
+        switch self {
+        case .main: CGMainDisplayID()
+        case .id(let id): id
+        }
+    }
+}
+
+extension CGRect {
+    /// `[x, y, width, height]`, as preferences store an area and `-SelectArea` spells one. Refuses
+    /// anything that is not four finite numbers with a positive size.
+    init?(components: [Double]) {
+        guard components.count == 4, components.allSatisfy(\.isFinite), components[2] > 0, components[3] > 0 else { return nil }
+        self.init(x: components[0], y: components[1], width: components[2], height: components[3])
+    }
+}
+
+extension NSScreen {
+    var displayID: CGDirectDisplayID? {
+        (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber).map { CGDirectDisplayID($0.uint32Value) }
+    }
+
+    static func showing(_ display: DisplaySelection) -> NSScreen? {
+        let id = display.resolvedID
+        return screens.first { $0.displayID == id }
     }
 }
 
@@ -123,8 +200,7 @@ struct DisplayChoice: Identifiable, Hashable {
     static func current() -> [DisplayChoice] {
         let main = CGMainDisplayID()
         return NSScreen.screens.compactMap { screen in
-            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
-            let id = CGDirectDisplayID(number.uint32Value)
+            guard let id = screen.displayID else { return nil }
             return DisplayChoice(id: id, name: screen.localizedName, isMain: id == main)
         }
     }
