@@ -44,6 +44,20 @@ struct TargetSpec {
         #expect(RecordingPreferences.load(from: scratch.defaults).camera == .device(uniqueID: "camera-1"))
     }
 
+    @Test func theSystemAudioChoiceReachesTheRecording() async {
+        let scratch = ScratchDefaults()
+        defer { scratch.remove() }
+        let calls = Calls()
+        let model = model(scratch, calls, kind: .screen)
+        #expect(model.configuration?.systemAudio == false)
+        model.preferences.systemAudio = true
+
+        await model.record()
+        #expect(calls.configurations.map(\.systemAudio) == [true])
+        #expect(model.missingPermissions == model.permissions.missing(for: RecordingConfiguration(outputDirectory: model.library)))
+        #expect(RecordingPreferences.load(from: scratch.defaults).systemAudio)
+    }
+
     @Test func areaRecordsTheLastAreaOfTheChosenDisplayOnly() {
         let scratch = ScratchDefaults()
         defer { scratch.remove() }

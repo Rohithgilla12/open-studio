@@ -18,6 +18,15 @@ struct PreferencesSpec {
         #expect(loaded.captureKind == .screen)
         #expect(loaded.areas.isEmpty)
         #expect(loaded.camera == .none)
+        #expect(loaded.systemAudio == false)
+    }
+
+    @Test(arguments: [false, true])
+    func theSystemAudioChoiceSurvivesARoundTrip(systemAudio: Bool) {
+        let scratch = ScratchDefaults()
+        defer { scratch.remove() }
+        RecordingPreferences(display: .main, microphone: .none, systemAudio: systemAudio).save(to: scratch.defaults)
+        #expect(RecordingPreferences.load(from: scratch.defaults).systemAudio == systemAudio)
     }
 
     @Test(arguments: [CameraSelection.none, .systemDefault, .device(uniqueID: "AFEF62F3-B9C9-4FA0-AD92-8C6C00000001")])

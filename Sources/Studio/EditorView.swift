@@ -167,6 +167,14 @@ struct StyleInspector: View {
                     CameraControls(editor: editor)
                 }
             }
+            let sources = AudioSource.allCases.filter { $0.movie(in: editor.project.source) != nil }
+            if !sources.isEmpty {
+                Section("Audio") {
+                    ForEach(sources, id: \.self) { source in
+                        AudioLevelControls(editor: editor, source: source)
+                    }
+                }
+            }
             Section("Zoom") {
                 if let id = editor.selection, let segment = editor.zooms.first(where: { $0.id == id }) {
                     LabeledContent("Scale") {
@@ -222,6 +230,47 @@ struct CameraControls: View {
         Binding(
             get: { overlay[keyPath: key] },
             set: { new in editor.apply(actionName) { $0.style.camera[keyPath: key] = new } })
+    }
+}
+
+struct AudioLevelControls: View {
+    let editor: Editor
+    let source: AudioSource
+
+    private var level: AudioLevel { editor.project.edits.audio[source] }
+
+    var body: some View {
+        LabeledContent(source.title) {
+            HStack {
+                Slider(
+                    value: Binding(
+                        get: { level.volume },
+                        set: { new in editor.drag("Change \(source.title.capitalized) Level") { $0.audio[source].volume = new } }),
+                    in: AudioLevel.volumeRange
+                ) { editing in
+                    if !editing { editor.endDrag() }
+                }
+                .disabled(level.isMuted)
+                Toggle(isOn: Binding(
+                    get: { level.isMuted },
+                    set: { muted in editor.apply(muted ? "Mute \(source.title.capitalized)" : "Unmute \(source.title.capitalized)") { $0.audio[source].isMuted = muted } })
+                ) {
+                    Image(systemName: level.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                }
+                .toggleStyle(.button)
+                .help(level.isMuted ? "Unmute" : "Mute")
+                .accessibilityLabel(Text(level.isMuted ? "Unmute \(source.title.lowercased())" : "Mute \(source.title.lowercased())"))
+            }
+        }
+    }
+}
+
+extension AudioSource {
+    var title: String {
+        switch self {
+        case .microphone: "Microphone"
+        case .systemAudio: "System audio"
+        }
     }
 }
 

@@ -86,17 +86,19 @@ final class FakeRecording: RecordingHandle {
     private let stops = Atomic(0)
 
     private let endsOnStop: Bool
+    private let warnings: [RecordingWarning]
 
-    init(directory: URL, endsOnStop: Bool = true) {
+    init(directory: URL, endsOnStop: Bool = true, warnings: [RecordingWarning] = []) {
         self.directory = directory
         self.endsOnStop = endsOnStop
+        self.warnings = warnings
         (updates, continuation) = AsyncStream.makeStream()
     }
 
     var stopCount: Int { stops.load(ordering: .relaxed) }
 
     var finished: FinishedRecording {
-        FinishedRecording(directory: directory, duration: .seconds(2), hasMicrophone: false, termination: .userStopped)
+        FinishedRecording(directory: directory, duration: .seconds(2), hasMicrophone: false, termination: .userStopped, warnings: warnings)
     }
 
     func stop() async -> FinishedRecording {

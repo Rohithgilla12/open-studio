@@ -94,17 +94,19 @@ public enum CaptureKind: String, Sendable, CaseIterable, Identifiable {
 public struct RecordingPreferences: Sendable, Equatable {
     public var display: DisplaySelection
     public var microphone: MicrophoneSelection
+    public var systemAudio: Bool
     public var camera: CameraSelection
     public var captureKind: CaptureKind
     /// The last area chosen on each display, in display points, origin top-left.
     public var areas: [CGDirectDisplayID: CGRect]
 
     public init(
-        display: DisplaySelection, microphone: MicrophoneSelection, camera: CameraSelection = .none,
+        display: DisplaySelection, microphone: MicrophoneSelection, systemAudio: Bool = false, camera: CameraSelection = .none,
         captureKind: CaptureKind = .screen, areas: [CGDirectDisplayID: CGRect] = [:]
     ) {
         self.display = display
         self.microphone = microphone
+        self.systemAudio = systemAudio
         self.camera = camera
         self.captureKind = captureKind
         self.areas = areas
@@ -120,6 +122,7 @@ public struct RecordingPreferences: Sendable, Equatable {
 
     private static let displayKey = "recording.display"
     private static let microphoneKey = "recording.microphone"
+    private static let systemAudioKey = "recording.systemAudio"
     private static let cameraKey = "recording.camera"
     private static let captureKindKey = "recording.captureKind"
     private static let areasKey = "recording.areas"
@@ -143,7 +146,9 @@ public struct RecordingPreferences: Sendable, Equatable {
             guard let id = CGDirectDisplayID(entry.key), let area = CGRect(components: entry.value) else { return }
             areas[id] = area
         }
-        return RecordingPreferences(display: display, microphone: microphone, camera: camera, captureKind: captureKind, areas: areas)
+        return RecordingPreferences(
+            display: display, microphone: microphone, systemAudio: defaults.bool(forKey: systemAudioKey), camera: camera,
+            captureKind: captureKind, areas: areas)
     }
 
     func save(to defaults: UserDefaults = .standard) {
@@ -156,6 +161,7 @@ public struct RecordingPreferences: Sendable, Equatable {
         case .systemDefault: defaults.set("default", forKey: Self.microphoneKey)
         case .device(let uniqueID): defaults.set("device:\(uniqueID)", forKey: Self.microphoneKey)
         }
+        defaults.set(systemAudio, forKey: Self.systemAudioKey)
         switch camera {
         case .none: defaults.set("none", forKey: Self.cameraKey)
         case .systemDefault: defaults.set("default", forKey: Self.cameraKey)

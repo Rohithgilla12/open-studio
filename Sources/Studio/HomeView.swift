@@ -274,6 +274,9 @@ struct SourcePickers: View {
                 }
             }
             .frame(maxWidth: 320)
+            Toggle("System audio", isOn: $preferences.systemAudio)
+                .fixedSize()
+                .help("Records what the Mac plays beside the microphone. Open Studio's own sound is left out.")
             Picker("Camera", selection: $preferences.camera) {
                 Text("None").tag(CameraSelection.none)
                 if preferences.camera == .systemDefault {

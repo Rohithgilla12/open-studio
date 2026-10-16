@@ -66,7 +66,9 @@ public final class StudioModel {
 
     public var configuration: RecordingConfiguration? {
         captureTarget.map {
-            RecordingConfiguration(outputDirectory: library, target: $0, microphone: preferences.microphone, camera: preferences.camera)
+            RecordingConfiguration(
+                outputDirectory: library, target: $0, microphone: preferences.microphone, systemAudio: preferences.systemAudio,
+                camera: preferences.camera)
         }
     }
 
@@ -321,6 +323,10 @@ public final class StudioModel {
         services.setAppHidden(false)
         if case .streamFailed(let detail) = finished.termination {
             alert = StudioAlert(title: "The recording ended early", message: "Everything up to the failure was kept. \(detail)")
+        } else if finished.warnings.contains(where: { if case .systemAudioLost(.zero, _) = $0 { true } else { false } }) {
+            alert = StudioAlert(
+                title: "The take has no system audio",
+                message: "The Mac delivered no sound during the recording, so the take was saved without system audio.")
         }
         await refreshTakes()
         await open(finished.directory)

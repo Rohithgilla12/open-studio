@@ -102,6 +102,29 @@ struct PhaseSpec {
         #expect(calls.hidden == [true, false])
     }
 
+    @Test func aTakeThatEndedWithoutItsSystemAudioSaysSoAndStillOpens() async throws {
+        let library = try await Library.make()
+        defer { library.remove() }
+        let fake = FakeRecording(directory: library.take, warnings: [.systemAudioLost(at: .zero, "no audio")])
+        let model = StudioModel(library: library.url, services: .fake(calls: Calls(), start: { fake }))
+
+        await model.startRecording()
+        await model.stopRecording()
+        #expect(model.phaseName == "editing")
+        #expect(model.alert?.title == "The take has no system audio")
+    }
+
+    @Test func aSystemAudioTrackThatEndedMidTakeRaisesNoAlert() async throws {
+        let library = try await Library.make()
+        defer { library.remove() }
+        let fake = FakeRecording(directory: library.take, warnings: [.systemAudioLost(at: .seconds(1), "writer failed")])
+        let model = StudioModel(library: library.url, services: .fake(calls: Calls(), start: { fake }))
+
+        await model.startRecording()
+        await model.stopRecording()
+        #expect(model.alert == nil)
+    }
+
     @Test func theStreamsEndedAfterStopAndASecondStopChangeNothing() async throws {
         let library = try await Library.make()
         defer { library.remove() }
