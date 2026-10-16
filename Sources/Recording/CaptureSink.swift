@@ -13,6 +13,7 @@ actor CaptureSink {
         var codec: VideoCodec
         var frameRate: Int
         var microphone: (uniqueID: String, channels: Int)?
+        var systemAudio: Bool
         var camera: ResolvedCamera?
         var layout: RecordingLayout
     }
@@ -23,7 +24,8 @@ actor CaptureSink {
     private var stream: SCStream?
     private var output: StreamOutput?
     private var screen: MovieWriter?
-    private var microphone: MovieWriter?
+    private var microphone: AudioTrackWriter?
+    private var systemAudio: AudioTrackWriter?
     private var camera: CameraTrackWriter?
     private var cameraCapture: CameraCapture?
     private var origin: HostTime?
@@ -48,7 +50,10 @@ actor CaptureSink {
         screen = try MovieWriter(
             url: plan.layout.screen, kind: .video(codec: plan.codec, pixelSize: info.pixelSize, frameRate: plan.frameRate))
         if let microphone = plan.microphone {
-            self.microphone = try MovieWriter(url: plan.layout.microphone, kind: .microphone(channels: microphone.channels))
+            self.microphone = try AudioTrackWriter(url: plan.layout.microphone, channels: microphone.channels)
+        }
+        if plan.systemAudio {
+            systemAudio = try AudioTrackWriter(url: plan.layout.systemAudio, channels: Self.systemAudioChannels)
         }
         if let resolved = plan.camera { try warmUpCamera(resolved) }
 
@@ -58,7 +63,12 @@ actor CaptureSink {
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(plan.frameRate))
         configuration.showsCursor = false
         configuration.queueDepth = 6
-        configuration.capturesAudio = false
+        configuration.capturesAudio = plan.systemAudio
+        if plan.systemAudio {
+            configuration.excludesCurrentProcessAudio = true
+            configuration.sampleRate = Self.systemAudioSampleRate
+            configuration.channelCount = Self.systemAudioChannels
+        }
         if let microphone = plan.microphone {
             configuration.captureMicrophone = true
             configuration.microphoneCaptureDeviceID = microphone.uniqueID
@@ -72,6 +82,9 @@ actor CaptureSink {
             if plan.microphone != nil {
                 try stream.addStreamOutput(output, type: .microphone, sampleHandlerQueue: queue)
             }
+            if plan.systemAudio {
+                try stream.addStreamOutput(output, type: .audio, sampleHandlerQueue: queue)
+            }
             try await stream.startCapture()
         } catch {
             throw .captureFailedToStart(error.localizedDescription)
@@ -80,6 +93,9 @@ actor CaptureSink {
         self.output = output
         startHeartbeat()
     }
+
+    static let systemAudioSampleRate = 48_000
+    static let systemAudioChannels = 2
 
     private func warmUpCamera(_ resolved: ResolvedCamera) throws(RecordingError) {
         camera = try CameraTrackWriter(url: plan.layout.camera, codec: plan.codec, plan: resolved.plan)
@@ -137,7 +153,11 @@ actor CaptureSink {
 
     struct Finished: Sendable {
         var duration: Duration
-        var camera: CameraTrackWriter.Outcome?
+        var microphone: TrackOutcome?
+        var systemAudio: TrackOutcome?
+        var camera: TrackOutcome?
+        /// Found while finishing, when the session no longer passes on reported warnings.
+        var warnings: [RecordingWarning] = []
     }
 
     func finish(at end: HostTime) async throws(RecordingError) -> Finished {
@@ -154,22 +174,36 @@ actor CaptureSink {
         guard let origin, let screen else { throw .noFramesDelivered }
         let endTime = max(end, origin)
         try await screen.finish(at: endTime)
+        let at = endTime.duration(since: origin)
+        var finished = Finished(duration: at)
         if let microphone {
             do {
-                try await microphone.finish(at: endTime)
+                finished.microphone = try await microphone.finish(at: endTime)
+                if finished.microphone == .removedEmpty {
+                    finished.warnings.append(.microphoneLost(at: .zero, "the microphone delivered no audio during the take"))
+                }
             } catch {
-                report(.warning(.microphoneLost(at: endTime.duration(since: origin), error.description)))
+                finished.warnings.append(.microphoneLost(at: at, error.description))
             }
         }
-        var cameraOutcome: CameraTrackWriter.Outcome?
+        if let systemAudio {
+            do {
+                finished.systemAudio = try await systemAudio.finish(at: endTime)
+                if finished.systemAudio == .removedEmpty {
+                    finished.warnings.append(.systemAudioLost(at: .zero, "the system delivered no audio during the take"))
+                }
+            } catch {
+                finished.warnings.append(.systemAudioLost(at: at, error.description))
+            }
+        }
         if let camera {
             do {
-                cameraOutcome = try await camera.finish(at: endTime)
+                finished.camera = try await camera.finish(at: endTime)
             } catch {
-                report(.warning(.cameraLost(at: endTime.duration(since: origin), error.description)))
+                finished.warnings.append(.cameraLost(at: at, error.description))
             }
         }
-        return Finished(duration: endTime.duration(since: origin), camera: cameraOutcome)
+        return finished
     }
 
     func abandon() async {
@@ -204,7 +238,8 @@ actor CaptureSink {
         switch type {
         case .screen: receiveScreen(buffer)
         case .microphone: receiveMicrophone(buffer)
-        default: break
+        case .audio: receiveSystemAudio(buffer)
+        @unknown default: break
         }
     }
 
@@ -214,7 +249,8 @@ actor CaptureSink {
         if origin == nil {
             do {
                 try screen.startSession(at: pts)
-                try microphone?.startSession(at: pts)
+                try microphone?.start(at: pts)
+                try systemAudio?.start(at: pts)
                 try camera?.start(at: pts)
             } catch {
                 report(.streamFailed(error.description))
@@ -262,14 +298,26 @@ actor CaptureSink {
 
     private func receiveMicrophone(_ buffer: CMSampleBuffer) {
         guard let origin, let microphone else { return }
-        let pts = HostTime(CMSampleBufferGetPresentationTimeStamp(buffer))
-        guard pts >= origin else { return }
         do {
             _ = try microphone.append(buffer)
         } catch {
             self.microphone = nil
-            report(.warning(.microphoneLost(at: pts.duration(since: origin), error.description)))
+            report(.warning(.microphoneLost(at: Self.time(of: buffer, since: origin), error.description)))
         }
+    }
+
+    private func receiveSystemAudio(_ buffer: CMSampleBuffer) {
+        guard let origin, let systemAudio else { return }
+        do {
+            _ = try systemAudio.append(buffer)
+        } catch {
+            self.systemAudio = nil
+            report(.warning(.systemAudioLost(at: Self.time(of: buffer, since: origin), error.description)))
+        }
+    }
+
+    private static func time(of buffer: CMSampleBuffer, since origin: HostTime) -> Duration {
+        max(.zero, HostTime(CMSampleBufferGetPresentationTimeStamp(buffer)).duration(since: origin))
     }
 }
 

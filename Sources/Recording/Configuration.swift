@@ -8,6 +8,9 @@ import ScreenCaptureKit
 public struct RecordingConfiguration: Sendable, Equatable {
     public var target: CaptureTarget
     public var microphone: MicrophoneSelection
+    /// What the Mac plays, from the same stream as the screen, to its own movie at 48 kHz stereo.
+    /// The recorder's own sound is left out. Needs no permission beyond Screen Recording.
+    public var systemAudio: Bool
     /// Recorded to its own movie beside the screen, at most 1920 x 1080 and 30 fps.
     public var camera: CameraSelection
     /// Parent directory. The session creates `YYYYMMDD-HHMMSS.osrec` inside it.
@@ -22,6 +25,7 @@ public struct RecordingConfiguration: Sendable, Equatable {
         outputDirectory: URL,
         target: CaptureTarget = .display(.main),
         microphone: MicrophoneSelection = .none,
+        systemAudio: Bool = false,
         camera: CameraSelection = .none,
         maxFrameRate: Int = 60,
         codec: VideoCodec = .hevc,
@@ -30,6 +34,7 @@ public struct RecordingConfiguration: Sendable, Equatable {
         self.outputDirectory = outputDirectory
         self.target = target
         self.microphone = microphone
+        self.systemAudio = systemAudio
         self.camera = camera
         self.maxFrameRate = maxFrameRate
         self.codec = codec

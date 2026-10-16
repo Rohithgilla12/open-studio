@@ -6,12 +6,18 @@ public struct FinishedRecording: Sendable, Equatable {
     public let duration: Duration
     public let hasMicrophone: Bool
     public let termination: Termination
+    /// Degradations found while finishing the take, such as a source that never delivered a sample.
+    /// `updates` has stopped carrying warnings by then, so they arrive here.
+    public let warnings: [RecordingWarning]
 
-    public init(directory: URL, duration: Duration, hasMicrophone: Bool, termination: Termination) {
+    public init(
+        directory: URL, duration: Duration, hasMicrophone: Bool, termination: Termination, warnings: [RecordingWarning] = []
+    ) {
         self.directory = directory
         self.duration = duration
         self.hasMicrophone = hasMicrophone
         self.termination = termination
+        self.warnings = warnings
     }
 }
 
@@ -53,6 +59,9 @@ public enum RecordingWarning: Sendable, Equatable {
     /// The camera track ends early: the device was unplugged, went away, or failed. Screen,
     /// microphone, and events continue.
     case cameraLost(at: Duration, String)
+    /// The system audio track ends early, or, at 0, never had a sample and was left out of the take.
+    /// Screen, microphone, camera, and events continue.
+    case systemAudioLost(at: Duration, String)
     case framesDropped(count: Int)
     /// A mid-take warning could not be saved to the manifest. The final manifest at stop still
     /// carries it, but a crash before then loses it.

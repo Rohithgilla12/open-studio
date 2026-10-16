@@ -56,7 +56,8 @@ public actor RecordingSession {
         let capture = CaptureSink(
             plan: CaptureSink.Plan(
                 target: target, codec: configuration.codec, frameRate: frameRate,
-                microphone: microphone.map { ($0.uniqueID, $0.channelCount) }, camera: camera, layout: layout),
+                microphone: microphone.map { ($0.uniqueID, $0.channelCount) }, systemAudio: configuration.systemAudio,
+                camera: camera, layout: layout),
             eventsWritten: { inlet.eventsWritten }, report: inlet.send)
 
         do {
@@ -84,6 +85,10 @@ public actor RecordingSession {
                 microphone: microphone.map {
                     WireMicrophone(deviceName: $0.localizedName, sampleRate: 48_000, channelCount: $0.channelCount)
                 },
+                systemAudio: configuration.systemAudio
+                    ? WireSystemAudio(
+                        sampleRate: Double(CaptureSink.systemAudioSampleRate), channelCount: CaptureSink.systemAudioChannels)
+                    : nil,
                 camera: camera.map {
                     WireCamera(
                         deviceName: $0.device.localizedName, pixelWidth: $0.plan.width, pixelHeight: $0.plan.height,
@@ -159,13 +164,7 @@ public actor RecordingSession {
     }
 
     private func record(_ warning: RecordingWarning) {
-        let wire: ManifestWarning? = switch warning {
-        case .microphoneLost(let at, let message): .microphoneLost(at: MediaTime(at), message: message)
-        case .inputTapReenabled(let at): .inputTapReenabled(at: MediaTime(at))
-        case .cameraLost(let at, let message): .cameraLost(at: MediaTime(at), message: message)
-        case .framesDropped, .manifestWriteFailed: nil
-        }
-        guard let wire else { return }
+        guard let wire = warning.wire else { return }
         manifest.warnings.append(wire)
         do {
             try manifest.write(to: layout)
@@ -185,10 +184,15 @@ public actor RecordingSession {
             problems.append("event log: \(error)")
         }
         var duration: Duration = .zero
+        var warnings: [RecordingWarning] = []
         do {
             let finished = try await capture.finish(at: end)
             duration = finished.duration
+            if finished.microphone == .removedEmpty { manifest.microphone = nil }
+            if finished.systemAudio == .removedEmpty { manifest.systemAudio = nil }
             if finished.camera == .removedEmpty { manifest.camera = nil }
+            warnings = finished.warnings
+            manifest.warnings += warnings.compactMap(\.wire)
         } catch {
             problems.append(error.description)
         }
@@ -203,7 +207,8 @@ public actor RecordingSession {
         lock.release()
         let finished = FinishedRecording(
             directory: directory, duration: duration, hasMicrophone: manifest.microphone != nil,
-            termination: problems.isEmpty ? reason.termination : .finalizationFailed(problems.joined(separator: "; ")))
+            termination: problems.isEmpty ? reason.termination : .finalizationFailed(problems.joined(separator: "; ")),
+            warnings: warnings)
         handle(.finalized(finished))
         return finished
     }
@@ -277,6 +282,19 @@ private final class SessionInlet: Sendable {
         }
         Task {
             for input in pending { await session.handle(input) }
+        }
+    }
+}
+
+extension RecordingWarning {
+    /// The manifest's form, for the warnings that outlive the session.
+    var wire: ManifestWarning? {
+        switch self {
+        case .microphoneLost(let at, let message): .microphoneLost(at: MediaTime(at), message: message)
+        case .inputTapReenabled(let at): .inputTapReenabled(at: MediaTime(at))
+        case .cameraLost(let at, let message): .cameraLost(at: MediaTime(at), message: message)
+        case .systemAudioLost(let at, let message): .systemAudioLost(at: MediaTime(at), message: message)
+        case .framesDropped, .manifestWriteFailed: nil
         }
     }
 }

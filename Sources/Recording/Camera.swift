@@ -163,14 +163,7 @@ final class CameraTrackWriter {
 
     func lose() { track.lose() }
 
-    enum Outcome: Sendable, Equatable {
-        case recorded
-        /// No frame ever arrived, so the movie was removed: a movie with no samples does not open,
-        /// and the take should not name a camera it does not have.
-        case removedEmpty
-    }
-
-    func finish(at stop: HostTime) async throws(RecordingError) -> Outcome {
+    func finish(at stop: HostTime) async throws(RecordingError) -> TrackOutcome {
         guard track.hasSamples else {
             writer.cancel()
             return .removedEmpty

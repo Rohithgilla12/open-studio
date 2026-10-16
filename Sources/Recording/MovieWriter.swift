@@ -10,7 +10,7 @@ import Foundation
 final class MovieWriter {
     enum Kind {
         case video(codec: VideoCodec, pixelSize: CGSize, frameRate: Int)
-        case microphone(channels: Int)
+        case audio(channels: Int)
     }
 
     private let writer: AVAssetWriter
@@ -81,7 +81,7 @@ extension MovieWriter.Kind {
                     AVVideoQualityKey: 0.85,
                 ],
             ])
-        case .microphone(let channels):
+        case .audio(let channels):
             return (.audio, [
                 AVFormatIDKey: kAudioFormatMPEG4AAC,
                 AVSampleRateKey: 48_000,
