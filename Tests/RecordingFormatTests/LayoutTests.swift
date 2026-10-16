@@ -17,6 +17,12 @@ struct LayoutTests {
         #expect(layout.cursorImage(Fixtures.arrowID).path == "/tmp/a.osrec/cursors/9f2c4e1a7b3d5c60.png")
     }
 
+    @Test func theCameraMovieSitsBesideTheScreen() {
+        let layout = RecordingLayout(directory: URL(fileURLWithPath: "/tmp/a.osrec", isDirectory: true))
+
+        #expect(layout.camera.path == "/tmp/a.osrec/camera.mov")
+    }
+
     @Test(arguments: ["../recording.js", "9F2C4E1A7B3D5C60", "9f2c4e1a7b3d5c6", "9f2c4e1a7b3d5c600", "9f2c4e1a7b3d5c6g"])
     func cursorIDsAreSixteenLowercaseHexDigits(raw: String) {
         #expect(CursorImageID(rawValue: raw) == nil)

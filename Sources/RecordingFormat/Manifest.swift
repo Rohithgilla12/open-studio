@@ -8,6 +8,9 @@ public import Foundation
 /// Space: every coordinate is in screen video pixels, origin top-left of the captured display,
 /// y down. A point outside `[0, pixelWidth) × [0, pixelHeight)` means the pointer was on another
 /// display.
+///
+/// Camera media time is on the same clock too: the camera movie starts its session at the same host
+/// time as the screen.
 public struct WireManifest: Sendable, Equatable {
     public var id: RecordingID
     /// Rounded to whole milliseconds on init, the precision of its ISO 8601 encoding, so a manifest
@@ -22,6 +25,7 @@ public struct WireManifest: Sendable, Equatable {
     /// later without re-recording.
     public var area: WireRect?
     public var microphone: WireMicrophone?
+    public var camera: WireCamera?
     /// Degradations that did not end the take. Written when they happen, so they survive a crash.
     public var warnings: [ManifestWarning]
     public var status: ManifestStatus
@@ -29,7 +33,7 @@ public struct WireManifest: Sendable, Equatable {
     public init(
         id: RecordingID, createdAt: Date, recorder: WireRecorderInfo, clock: WireClock,
         display: WireDisplay, screen: WireScreen, area: WireRect? = nil, microphone: WireMicrophone?,
-        warnings: [ManifestWarning] = [], status: ManifestStatus = .recording
+        camera: WireCamera? = nil, warnings: [ManifestWarning] = [], status: ManifestStatus = .recording
     ) {
         self.id = id
         self.createdAt = MillisecondTimestamp.rounded(createdAt)
@@ -39,11 +43,15 @@ public struct WireManifest: Sendable, Equatable {
         self.screen = screen
         self.area = area
         self.microphone = microphone
+        self.camera = camera
         self.warnings = warnings
         self.status = status
     }
 
-    var formatVersion: Int { area == nil ? 1 : FormatVersion.area }
+    var formatVersion: Int {
+        if camera != nil { return FormatVersion.camera }
+        return area == nil ? 1 : FormatVersion.area
+    }
 }
 
 public enum ManifestStatus: Sendable, Equatable {
@@ -66,6 +74,8 @@ public enum ManifestWarning: Sendable, Equatable {
     /// The system disabled the event tap and the recorder re-enabled it at `at`. Input in the gap
     /// is missing.
     case inputTapReenabled(at: MediaTime)
+    /// The camera track ends at `at`. Screen, microphone, and events continue.
+    case cameraLost(at: MediaTime, message: String)
 }
 
 public struct WireRecorderInfo: Sendable, Equatable, Codable {
@@ -170,6 +180,22 @@ public struct WireMicrophone: Sendable, Equatable, Codable {
     }
 }
 
+public struct WireCamera: Sendable, Equatable, Codable {
+    public var deviceName: String
+    /// The movie's size, which is the device's capture size scaled into 1920 x 1080 at most.
+    public var pixelWidth: Int
+    public var pixelHeight: Int
+    /// Upper bound, like the screen's. A camera that drops frames writes fewer.
+    public var frameRate: Int
+
+    public init(deviceName: String, pixelWidth: Int, pixelHeight: Int, frameRate: Int) {
+        self.deviceName = deviceName
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+        self.frameRate = frameRate
+    }
+}
+
 extension WireManifest {
     /// Decodes and applies the version gate. The gate runs before the rest of the manifest is
     /// read, so a newer manifest reports its version rather than a missing key.
@@ -199,7 +225,7 @@ extension WireManifest {
 }
 
 private enum ManifestKey: String, CodingKey {
-    case format, formatVersion, id, createdAt, recorder, clock, display, screen, area, microphone, warnings
+    case format, formatVersion, id, createdAt, recorder, clock, display, screen, area, microphone, camera, warnings
     case status, durationMicros, termination
 }
 
@@ -220,7 +246,7 @@ private enum ReasonTag: String, Codable {
 }
 
 private enum WarningTag: String, Codable {
-    case microphoneLost, inputTapReenabled
+    case microphoneLost, inputTapReenabled, cameraLost
 }
 
 /// ISO 8601 in UTC with exactly three fractional digits, such as `2026-10-13T06:22:33.412Z`.
@@ -279,6 +305,10 @@ extension WireManifest: Codable {
             throw DecodingError.dataCorruptedError(
                 forKey: .area, in: c, debugDescription: "area needs format version \(FormatVersion.area)")
         }
+        if version < FormatVersion.camera, c.contains(.camera) {
+            throw DecodingError.dataCorruptedError(
+                forKey: .camera, in: c, debugDescription: "camera needs format version \(FormatVersion.camera)")
+        }
 
         let status: ManifestStatus
         switch try c.decode(StatusTag.self, forKey: .status) {
@@ -299,6 +329,7 @@ extension WireManifest: Codable {
             screen: try c.decode(WireScreen.self, forKey: .screen),
             area: try c.decodeIfPresent(WireRect.self, forKey: .area),
             microphone: try c.decodeIfPresent(WireMicrophone.self, forKey: .microphone),
+            camera: try c.decodeIfPresent(WireCamera.self, forKey: .camera),
             warnings: try c.decodeIfPresent([TolerantWarning].self, forKey: .warnings)?.compactMap(\.warning) ?? [],
             status: status)
     }
@@ -318,6 +349,7 @@ extension WireManifest: Codable {
         try c.encode(screen, forKey: .screen)
         try c.encodeIfPresent(area, forKey: .area)
         try c.encodeIfPresent(microphone, forKey: .microphone)
+        try c.encodeIfPresent(camera, forKey: .camera)
         try c.encode(warnings, forKey: .warnings)
         switch status {
         case .recording:
@@ -369,6 +401,10 @@ extension ManifestWarning: Encodable {
         case .inputTapReenabled(let at):
             try c.encode(WarningTag.inputTapReenabled, forKey: .kind)
             try c.encode(at, forKey: .at)
+        case .cameraLost(let at, let message):
+            try c.encode(WarningTag.cameraLost, forKey: .kind)
+            try c.encode(at, forKey: .at)
+            try c.encode(message, forKey: .message)
         }
     }
 }
@@ -384,6 +420,9 @@ private struct TolerantWarning: Decodable {
                 at: try c.decode(MediaTime.self, forKey: .at), message: try c.decode(String.self, forKey: .message))
         case .inputTapReenabled:
             warning = .inputTapReenabled(at: try c.decode(MediaTime.self, forKey: .at))
+        case .cameraLost:
+            warning = .cameraLost(
+                at: try c.decode(MediaTime.self, forKey: .at), message: try c.decode(String.self, forKey: .message))
         case nil:
             warning = nil
         }

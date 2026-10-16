@@ -20,6 +20,7 @@ struct ManifestTests {
             warnings: [
                 .microphoneLost(at: MediaTime(microseconds: 1_500_000), message: "device removed"),
                 .inputTapReenabled(at: MediaTime(microseconds: 2_250_000)),
+                .cameraLost(at: MediaTime(microseconds: 2_750_000), message: "device disconnected"),
             ])
 
         #expect(try WireManifest.decode(manifest.encoded()) == manifest)
@@ -135,6 +136,43 @@ struct ManifestTests {
 
     @Test func aVersion1ManifestWithAnAreaIsRefusedRatherThanShownWhole() throws {
         let data = try Fixtures.editJSON(Fixtures.manifest().encoded()) { $0["area"] = [10, 10, 100, 100] }
+
+        let error = #expect(throws: FormatError.self) { try WireManifest.decode(data) }
+        guard case .manifestUnreadable = error else {
+            Issue.record("expected manifestUnreadable, got \(String(describing: error))")
+            return
+        }
+    }
+
+    @Test func aCameraRoundTripsAsVersion3() throws {
+        var manifest = Fixtures.manifest()
+        manifest.camera = WireCamera(deviceName: "FaceTime HD Camera", pixelWidth: 1920, pixelHeight: 1080, frameRate: 30)
+
+        let json = try JSONSerialization.jsonObject(with: manifest.encoded()) as! [String: Any]
+
+        #expect(json["formatVersion"] as? Int == 3)
+        let camera = json["camera"] as? [String: Any]
+        #expect(camera?["deviceName"] as? String == "FaceTime HD Camera")
+        #expect(camera?["pixelWidth"] as? Int == 1920)
+        #expect(try WireManifest.decode(manifest.encoded()) == manifest)
+    }
+
+    @Test func aCameraWithAnAreaIsStillVersion3() throws {
+        var manifest = Fixtures.manifest()
+        manifest.area = WireRect(x: 0, y: 0, width: 800, height: 600)
+        manifest.camera = WireCamera(deviceName: "USB Camera", pixelWidth: 1280, pixelHeight: 720, frameRate: 30)
+
+        let json = try JSONSerialization.jsonObject(with: manifest.encoded()) as! [String: Any]
+
+        #expect(json["formatVersion"] as? Int == 3)
+        #expect(try WireManifest.decode(manifest.encoded()) == manifest)
+    }
+
+    @Test func aVersion2ManifestWithACameraIsRefusedRatherThanExportedWithoutIt() throws {
+        let data = try Fixtures.editJSON(Fixtures.manifest().encoded()) {
+            $0["formatVersion"] = 2
+            $0["camera"] = ["deviceName": "USB Camera", "pixelWidth": 1280, "pixelHeight": 720, "frameRate": 30]
+        }
 
         let error = #expect(throws: FormatError.self) { try WireManifest.decode(data) }
         guard case .manifestUnreadable = error else {
