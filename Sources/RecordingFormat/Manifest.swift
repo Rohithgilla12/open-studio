@@ -275,6 +275,13 @@ extension WireManifest: Codable {
                 forKey: .clock, in: c, debugDescription: "clock must be \(WireClock.unit) since \(WireClock.origin)")
         }
 
+        // No version-1 writer knows the key, so its presence means a damaged or hand-made file, and
+        // reading it as the whole frame would show what the area was chosen to leave out.
+        if version < FormatVersion.area, c.contains(.area) {
+            throw DecodingError.dataCorruptedError(
+                forKey: .area, in: c, debugDescription: "area needs format version \(FormatVersion.area)")
+        }
+
         let status: ManifestStatus
         switch try c.decode(StatusTag.self, forKey: .status) {
         case .recording:
@@ -292,7 +299,7 @@ extension WireManifest: Codable {
             clock: WireClock(originHostTimeNanos: try clock.decode(UInt64.self, forKey: .originHostTimeNanos)),
             display: try c.decode(WireDisplay.self, forKey: .display),
             screen: try c.decode(WireScreen.self, forKey: .screen),
-            area: version >= FormatVersion.area ? try c.decodeIfPresent(WireRect.self, forKey: .area) : nil,
+            area: try c.decodeIfPresent(WireRect.self, forKey: .area),
             microphone: try c.decodeIfPresent(WireMicrophone.self, forKey: .microphone),
             warnings: try c.decodeIfPresent([TolerantWarning].self, forKey: .warnings)?.compactMap(\.warning) ?? [],
             status: status)

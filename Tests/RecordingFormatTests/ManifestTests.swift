@@ -133,10 +133,14 @@ struct ManifestTests {
         #expect(json["area"] == nil)
     }
 
-    @Test func version1MeansTheWholeFrameEvenWithAnAreaKey() throws {
+    @Test func aVersion1ManifestWithAnAreaIsRefusedRatherThanShownWhole() throws {
         let data = try Fixtures.editJSON(Fixtures.manifest().encoded()) { $0["area"] = [10, 10, 100, 100] }
 
-        #expect(try WireManifest.decode(data).area == nil)
+        let error = #expect(throws: FormatError.self) { try WireManifest.decode(data) }
+        guard case .manifestUnreadable = error else {
+            Issue.record("expected manifestUnreadable, got \(String(describing: error))")
+            return
+        }
     }
 
     @Test func otherFormatIsRejected() throws {

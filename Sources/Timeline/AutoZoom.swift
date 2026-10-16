@@ -15,7 +15,7 @@ public struct ZoomSegment: Sendable, Hashable, Codable, Identifiable {
     public enum Focus: Sendable, Hashable, Codable {
         /// Follow the time-weighted centroid of pointer groups inside the segment.
         case followPointer
-        /// Hold on a fixed point, normalized to the source's visible rect (0...1, origin top-left).
+        /// Hold on a fixed point, normalised to the source's visible rect (0...1, origin top-left).
         case fixed(x: Double, y: Double)
     }
 

@@ -1,4 +1,4 @@
-/// Precomputed camera answers: a scale spring and a center spring, plus the visible rect for
+/// Precomputed camera answers: a scale spring and a centre spring, plus the visible rect for
 /// clamping.
 struct CameraTrack: Sendable {
     let bounds: Rect
@@ -76,7 +76,7 @@ struct CameraTrack: Sendable {
         return result.filter { source.visibleRect.contains($0.position) }
     }
 
-    /// Centers for which a viewport of `bounds / scale` stays inside the bounds.
+    /// Centres for which a viewport of `bounds / scale` stays inside the bounds.
     struct ReachableCenters {
         var x: ClosedRange<Double>
         var y: ClosedRange<Double>
