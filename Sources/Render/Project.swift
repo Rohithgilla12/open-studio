@@ -63,6 +63,14 @@ public struct Project: Sendable {
         timeline = Timeline(source: source, zooms: edits.zooms, settings: edits.settings)
     }
 
+    /// The canvas the format renders at for this take. Preview, export, stills, and the editor all
+    /// size from here. An entire-screen take keeps the preset's box; a take with an area gets a
+    /// canvas of the area's shape.
+    public func canvasSize(for format: OutputFormat) -> PixelSize {
+        guard let area = source.area else { return format.canvasSize(for: source.frameSize, padding: edits.style.padding) }
+        return format.canvasSize(forArea: area.size, padding: edits.style.padding)
+    }
+
     /// Atomic replace of project.json (write to a temporary file in the same directory, then
     /// rename), so a crash mid-save leaves the previous edits. Saving the same edits twice writes
     /// the same bytes (sorted keys). The only file this module ever writes into a take.

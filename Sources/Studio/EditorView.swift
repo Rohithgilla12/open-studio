@@ -56,8 +56,7 @@ struct EditorView: View {
     }
 
     private var canvasAspect: CGFloat {
-        let canvas = editor.project.edits.format.canvasSize(
-            for: editor.project.source.frameSize, padding: editor.project.edits.style.padding)
+        let canvas = editor.project.canvasSize(for: editor.project.edits.format)
         return CGFloat(canvas.width) / CGFloat(max(canvas.height, 1))
     }
 
@@ -295,8 +294,7 @@ struct FormatPicker: View {
         Picker("Codec", selection: binding(\.codec, "Change Codec")) {
             ForEach(Codec.allCases, id: \.self) { Text($0.label).tag($0) }
         }
-        let canvas = editor.project.edits.format.canvasSize(
-            for: editor.project.source.frameSize, padding: editor.project.edits.style.padding)
+        let canvas = editor.project.canvasSize(for: editor.project.edits.format)
         Text("\(canvas.width) × \(canvas.height)")
             .font(.caption)
             .foregroundStyle(.secondary)

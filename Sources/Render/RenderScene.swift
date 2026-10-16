@@ -21,8 +21,8 @@ final class RenderScene: Sendable {
     /// input, measured in D2), the backdrop is not re-rendered.
     static func make(project: Project, format: OutputFormat, reusing previous: RenderScene?) throws(RenderError) -> RenderScene {
         let style = project.edits.style
-        let canvas = format.canvasSize(for: project.source.frameSize, padding: style.padding)
-        let layout = CanvasLayout(style: style, canvas: canvas, source: project.source.frameSize)
+        let canvas = project.canvasSize(for: format)
+        let layout = CanvasLayout(style: style, canvas: canvas, source: project.source.visibleRect.size)
         let key = SceneAssets.Key(style: style, canvas: canvas, source: project.source.id)
         let assets: SceneAssets
         if let previous, previous.assets.key == key {

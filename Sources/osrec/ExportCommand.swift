@@ -59,7 +59,7 @@ struct ExportCommand: AsyncParsableCommand {
         }
         let destination = URL(filePath: out!, directoryHint: .notDirectory)
         let format = project.edits.format
-        let canvas = format.canvasSize(for: project.source.frameSize, padding: project.edits.style.padding)
+        let canvas = project.canvasSize(for: format)
         let report: ExportReport
         // A redrawn bar is noise in a log or a pipe, so it only draws on a terminal.
         let drawsProgress = isatty(STDERR_FILENO) == 1

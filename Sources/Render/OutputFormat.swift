@@ -32,6 +32,18 @@ public struct OutputFormat: Sendable, Hashable, Codable {
         }
     }
 
+    /// The canvas for a take that shows only an area of its frame: the largest even canvas with the
+    /// area's aspect inside the preset's box, or for native the area grown by the padding.
+    public func canvasSize(forArea area: Size, padding: Double) -> PixelSize {
+        let box = canvasSize(for: area, padding: padding)
+        guard size != .native else { return box }
+        let aspect = area.width / area.height
+        if aspect >= Double(box.width) / Double(box.height) {
+            return PixelSize(width: box.width, height: max(2, Self.even(Double(box.width) / aspect)))
+        }
+        return PixelSize(width: max(2, Self.even(Double(box.height) * aspect)), height: box.height)
+    }
+
     private static func even(_ value: Double) -> Int { Int(value.rounded()) & ~1 }
 }
 
