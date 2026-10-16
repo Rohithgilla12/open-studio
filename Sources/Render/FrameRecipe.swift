@@ -53,8 +53,6 @@ enum FrameRecipe {
             .cropped(to: canvasRect)
     }
 
-    /// The camera picture, mirrored if asked, scaled to fill the overlay, centred, and cut to its shape.
-    /// Drawn after the content mask, so it is not clipped by the screen's rounded edge.
     private static func overlay(_ camera: CIImage, geometry: CameraOverlayGeometry, canvasHeight: Int) -> CIImage {
         let rect = flipped(geometry.rect, canvasHeight: canvasHeight)
         let extent = camera.extent

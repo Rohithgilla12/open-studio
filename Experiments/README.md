@@ -60,3 +60,13 @@ Twelve screen buffers from a 640 × 400, 30 fps stream of the main display. Ever
 ## Deprecations seen while building
 
 On the macOS 27 SDK, `AVAssetWriterInput.expectsMediaDataInRealTime` and `AVAssetWriterInputPixelBufferAdaptor` are deprecated in favour of `appendImmediately(...)` and `AVAssetWriter.inputPixelBufferReceiver(for:pixelBufferAttributes:)`. The deployment target is macOS 15, so the recorder still needs the older API or an availability branch.
+
+## Synthetic camera
+
+```
+swiftc -O Experiments/synthetic-camera/main.swift -o /tmp/synthetic-camera
+cp -R <take>.osrec /tmp/camera-take.osrec
+/tmp/synthetic-camera /tmp/camera-take.osrec [width height]
+```
+
+Not an experiment but a fixture maker, added in D9. It writes a generated `camera.mov` (1920 x 1080 at 30 fps by default, HEVC) into a take, and adds the camera key and format version 3 to its manifest, as the recorder writes them. The picture changes colour every 2 s, shows the recording time in large digits and a bar that sweeps once a second, and has a different left and right half, so mirroring shows. It writes into the take it is given, so give it a copy. The D9 export measurement and the editor screenshot used it, so neither needed a real camera.

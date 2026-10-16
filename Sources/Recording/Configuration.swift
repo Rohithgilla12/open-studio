@@ -192,7 +192,8 @@ public enum CaptureSources {
     }
 
     /// Without `NSCameraUseContinuityCameraDeviceType` in the bundle, as for `osrec`, a Continuity
-    /// Camera reports itself as a built-in wide-angle camera, so both types are listed.
+    /// Camera reports itself as a built-in wide-angle camera (the SDK's note on
+    /// `AVCaptureDeviceTypeContinuityCamera`), so both types are listed.
     static let cameraDeviceTypes: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .continuityCamera, .external]
 
     private static func videoDevices() -> [AVCaptureDevice] {

@@ -1,12 +1,3 @@
-// Adds a generated camera.mov to a copy of a take, so the camera overlay can be exported, measured,
-// and shown in the app without opening a real camera.
-//
-//     swiftc -O Experiments/synthetic-camera/main.swift -o /tmp/synthetic-camera
-//     /tmp/synthetic-camera <take>.osrec [width height]
-//
-// The picture changes colour every 2 s, carries the recording time in large digits and a bar that
-// sweeps once a second, and has a different left and right half so mirroring shows. The manifest
-// gets the camera key and format version 3, as the recorder writes them.
 import AVFoundation
 import CoreText
 import Foundation

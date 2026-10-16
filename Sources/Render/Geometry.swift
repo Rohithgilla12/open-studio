@@ -124,10 +124,11 @@ struct CameraOverlayGeometry: Sendable, Hashable {
         case .circle: Size(width: height, height: height)
         case .roundedRectangle: Size(width: (height * camera.width / camera.height).rounded(), height: height)
         }
-        // A very wide camera in a narrow canvas would run off the far edge, so it shrinks to fit.
-        let room = Double(canvas.width) - 2 * inset
-        if size.width > room {
-            size = Size(width: room.rounded(.down), height: (size.height * room / size.width).rounded(.down))
+        let widthInsideInsets = Double(canvas.width) - 2 * inset
+        if size.width > widthInsideInsets {
+            size = Size(
+                width: widthInsideInsets.rounded(.down),
+                height: (size.height * widthInsideInsets / size.width).rounded(.down))
         }
         let left = overlay.corner == .topLeft || overlay.corner == .bottomLeft
         let top = overlay.corner == .topLeft || overlay.corner == .topRight

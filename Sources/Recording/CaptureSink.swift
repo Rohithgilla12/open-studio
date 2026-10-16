@@ -50,24 +50,7 @@ actor CaptureSink {
         if let microphone = plan.microphone {
             self.microphone = try MovieWriter(url: plan.layout.microphone, kind: .microphone(channels: microphone.channels))
         }
-        if let resolved = plan.camera {
-            camera = try CameraTrackWriter(url: plan.layout.camera, codec: plan.codec, plan: resolved.plan)
-            let capture = try CameraCapture(
-                resolved, queue: queue,
-                onFrame: { [unowned self] buffer, clock in
-                    // Delivered on `queue`, the actor's executor, like screen frames.
-                    nonisolated(unsafe) let buffer = buffer
-                    assumeIsolated { $0.receiveCamera(buffer, clock: clock) }
-                },
-                onLost: { [weak self] message in
-                    guard let self else { return }
-                    Task { await self.cameraLost(message) }
-                })
-            // Started before the stream so the camera is warm by the first screen frame; its frames
-            // before that are dropped.
-            capture.start()
-            cameraCapture = capture
-        }
+        if let resolved = plan.camera { try warmUpCamera(resolved) }
 
         let configuration = SCStreamConfiguration()
         configuration.width = Int(info.pixelSize.width)
@@ -96,6 +79,22 @@ actor CaptureSink {
         self.stream = stream
         self.output = output
         startHeartbeat()
+    }
+
+    private func warmUpCamera(_ resolved: ResolvedCamera) throws(RecordingError) {
+        camera = try CameraTrackWriter(url: plan.layout.camera, codec: plan.codec, plan: resolved.plan)
+        let capture = try CameraCapture(
+            resolved, queue: queue,
+            onFrame: { [unowned self] buffer, clock in
+                nonisolated(unsafe) let buffer = buffer
+                assumeIsolated { $0.receiveCamera(buffer, clock: clock) }
+            },
+            onLost: { [weak self] message in
+                guard let self else { return }
+                Task { await self.cameraLost(message) }
+            })
+        capture.start()
+        cameraCapture = capture
     }
 
     /// ScreenCaptureKit delivers a frame only when the display changes, and the cursor is hidden
@@ -175,7 +174,8 @@ actor CaptureSink {
     }
 
     func cameraLost(_ message: String) {
-        guard !stopping, let camera, camera.lose() else { return }
+        guard !stopping, let camera, !camera.track.isLost else { return }
+        camera.lose()
         let now = HostTime.now()
         report(.warning(.cameraLost(at: origin.map { max(.zero, now.duration(since: $0)) } ?? .zero, message)))
         cameraCapture?.stop()
@@ -245,9 +245,9 @@ actor CaptureSink {
     }
 
     private func receiveCamera(_ buffer: CMSampleBuffer, clock: CMClock?) {
-        guard !stopping, origin != nil, let camera, let (onHost, pts) = CameraClock.onHostClock(buffer, from: clock) else { return }
+        guard !stopping, let camera, let sample = CameraClock.onHostClock(buffer, from: clock) else { return }
         do {
-            _ = try camera.append(onHost, at: pts)
+            _ = try camera.append(sample)
         } catch {
             cameraLost(error.description)
         }

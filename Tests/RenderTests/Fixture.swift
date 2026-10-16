@@ -35,8 +35,6 @@ enum Fixture {
 
     typealias Color = (red: UInt8, green: UInt8, blue: UInt8)
 
-    /// A synthetic camera: the left and right halves of each frame in known colours, switching at
-    /// `changeAt`, at 10 fps from `from` to `until` seconds of recording time.
     struct Camera {
         var width = 640
         var height = 360
@@ -45,9 +43,9 @@ enum Fixture {
         var changeAt = 1.0
         var from = 0.0
         var until = 2.0
+        var fps = 10
     }
 
-    /// Writes `camera.mov` into the take and names it in the manifest, as the recorder does.
     static func addCamera(_ camera: Camera, to take: URL) async throws {
         let url = take.appending(path: "camera.mov", directoryHint: .notDirectory)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
@@ -60,7 +58,7 @@ enum Fixture {
         let after = halves(width: camera.width, height: camera.height, camera.after)
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
-        let fps = 10
+        let fps = camera.fps
         for index in Int((camera.from * Double(fps)).rounded())..<Int((camera.until * Double(fps)).rounded()) {
             while !input.isReadyForMoreMediaData { try await Task.sleep(for: .milliseconds(5)) }
             let seconds = Double(index) / Double(fps)

@@ -89,7 +89,6 @@ struct MovieComposition: @unchecked Sendable {
         scene.cameraOverlay == nil ? nil : cameraTrackID
     }
 
-    /// The video tracks the composition reads for `scene`, for an `AVAssetReaderVideoCompositionOutput`.
     func videoTracks(for scene: RenderScene) -> [AVAssetTrack] {
         let wanted = [screenTrackID] + (cameraTrackID(for: scene).map { [$0] } ?? [])
         return wanted.compactMap { id in asset.tracks.first { $0.trackID == id } }

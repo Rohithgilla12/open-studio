@@ -2,7 +2,6 @@ import AVFoundation
 import CoreMedia
 import Foundation
 
-/// Which device format to capture and what size to write.
 enum CameraFormat {
     struct Candidate: Sendable, Equatable {
         var width: Int
@@ -18,7 +17,6 @@ enum CameraFormat {
         var frameRate: Double
     }
 
-    /// Long side by short side, so a portrait camera gets the same allowance as a landscape one.
     static let cap = (long: 1920, short: 1080)
     static let frameRate = 30.0
 
@@ -55,17 +53,28 @@ enum CameraClock {
     /// `AVCaptureSession` stamps buffers on its `synchronizationClock`, which is usually the host
     /// clock but is not promised to be. Every other source is on the host clock, so a buffer from
     /// any other clock is moved onto it and retimed.
-    static func onHostClock(_ buffer: CMSampleBuffer, from clock: CMClockOrTimebase?) -> (buffer: CMSampleBuffer, pts: HostTime)? {
+    static func onHostClock(_ buffer: CMSampleBuffer, from clock: CMClockOrTimebase?) -> HostClockSample? {
         let pts = CMSampleBufferGetPresentationTimeStamp(buffer)
         guard pts.isValid else { return nil }
         let host = CMClockGetHostTimeClock()
-        guard let clock, !CFEqual(clock, host) else { return (buffer, HostTime(pts)) }
+        guard let clock, !CFEqual(clock, host) else { return HostClockSample(buffer: buffer, pts: HostTime(pts)) }
         let converted = CMSyncConvertTime(pts, from: clock, to: host)
         guard converted.isValid else { return nil }
         let timing = CMSampleTimingInfo(
             duration: CMSampleBufferGetDuration(buffer), presentationTimeStamp: converted, decodeTimeStamp: .invalid)
         guard let retimed = try? CMSampleBuffer(copying: buffer, withNewTiming: [timing]) else { return nil }
-        return (retimed, HostTime(converted))
+        return HostClockSample(buffer: retimed, pts: HostTime(converted))
+    }
+}
+
+/// A camera buffer whose timing is on the host clock. Only `CameraClock` makes one.
+struct HostClockSample {
+    let buffer: CMSampleBuffer
+    let pts: HostTime
+
+    fileprivate init(buffer: CMSampleBuffer, pts: HostTime) {
+        self.buffer = buffer
+        self.pts = pts
     }
 }
 
@@ -73,7 +82,6 @@ enum CameraClock {
 enum CameraTrack: Sendable, Equatable {
     case waitingForOrigin
     case recording(origin: HostTime, lastSample: HostTime?)
-    /// Lost after `origin` was known; nothing more is appended.
     case lost(origin: HostTime, lastSample: HostTime?)
     /// Lost before the screen's first frame. The movie starts its session at the origin and stays
     /// empty.
@@ -87,7 +95,6 @@ enum CameraTrack: Sendable, Equatable {
         }
     }
 
-    /// A buffer is kept from the origin on, in increasing time, until the track is lost.
     func accepts(_ pts: HostTime) -> Bool {
         guard case .recording(let origin, let last) = self else { return false }
         return pts >= origin && last.map { pts > $0 } ?? true
@@ -97,14 +104,19 @@ enum CameraTrack: Sendable, Equatable {
         if case .recording(let origin, _) = self { self = .recording(origin: origin, lastSample: pts) }
     }
 
-    /// Returns whether this call ended the track, so the warning is raised once.
-    mutating func lose() -> Bool {
+    var isLost: Bool {
+        switch self {
+        case .waitingForOrigin, .recording: false
+        case .lost, .lostBeforeOrigin: true
+        }
+    }
+
+    mutating func lose() {
         switch self {
         case .waitingForOrigin: self = .lostBeforeOrigin
         case .recording(let origin, let last): self = .lost(origin: origin, lastSample: last)
-        case .lost, .lostBeforeOrigin: return false
+        case .lost, .lostBeforeOrigin: break
         }
-        return true
     }
 
     /// A live track runs to the take's end, like the screen. A lost one ends one frame after its last
@@ -117,7 +129,6 @@ enum CameraTrack: Sendable, Equatable {
     }
 }
 
-/// Writes `camera.mov` by the rules of `CameraTrack`. Buffers must already be on the host clock.
 final class CameraTrackWriter {
     private let writer: MovieWriter
     private let frameInterval: Duration
@@ -137,22 +148,19 @@ final class CameraTrackWriter {
 
     /// Whether the buffer was written. False for a buffer before the origin, out of order, after
     /// the track was lost, or while the encoder is busy.
-    func append(_ buffer: CMSampleBuffer, at pts: HostTime) throws(RecordingError) -> Bool {
-        guard track.accepts(pts), try writer.append(buffer) else { return false }
-        track.appended(pts)
+    func append(_ sample: HostClockSample) throws(RecordingError) -> Bool {
+        guard track.accepts(sample.pts), try writer.append(sample.buffer) else { return false }
+        track.appended(sample.pts)
         return true
     }
 
-    func lose() -> Bool { track.lose() }
+    func lose() { track.lose() }
 
     func finish(at stop: HostTime) async throws(RecordingError) {
         try await writer.finish(at: track.end(stoppingAt: stop, frameInterval: frameInterval))
     }
 }
 
-/// The camera's capture graph. Delivers frames on the queue it is given, which is the capture
-/// sink's executor, so they arrive in the same isolation as screen frames.
-///
 /// `@unchecked` because the AVFoundation objects carry no Sendable annotation; each is configured
 /// in `init` and then only started and stopped.
 final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
@@ -172,15 +180,14 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         let name = device.localizedName
         session.beginConfiguration()
         defer { session.commitConfiguration() }
+        let input: AVCaptureDeviceInput
         do {
-            let input = try AVCaptureDeviceInput(device: device)
-            guard session.canAddInput(input) else { throw RecordingError.captureFailedToStart("\(name) cannot be added to a capture session") }
-            session.addInput(input)
-        } catch let error as RecordingError {
-            throw error
+            input = try AVCaptureDeviceInput(device: device)
         } catch {
             throw .captureFailedToStart("\(name): \(error.localizedDescription)")
         }
+        guard session.canAddInput(input) else { throw .captureFailedToStart("\(name) cannot be added to a capture session") }
+        session.addInput(input)
         output.videoSettings = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
             kCVPixelBufferWidthKey as String: camera.plan.width,
@@ -230,11 +237,12 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         onFrame(sampleBuffer, session.synchronizationClock)
     }
 
-    /// The range that reaches the planned rate, so the duration set is always one the format accepts.
+    /// AVFoundation raises an exception for a frame duration outside the format's ranges, so the
+    /// planned rate is clamped into one of them.
     private static func frameInterval(for format: AVCaptureDevice.Format, frameRate: Double) -> CMTime {
         let ranges = format.videoSupportedFrameRateRanges
         if let range = ranges.first(where: { $0.minFrameRate <= frameRate && frameRate <= $0.maxFrameRate }) {
-            return max(range.minFrameDuration, CMTime(value: 1_000, timescale: CMTimeScale(frameRate * 1_000)))
+            return max(range.minFrameDuration, CMTime(seconds: 1 / frameRate, preferredTimescale: 30_000))
         }
         return ranges.max { $0.maxFrameRate < $1.maxFrameRate }?.minFrameDuration ?? CMTime(value: 1, timescale: 30)
     }

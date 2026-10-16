@@ -85,9 +85,9 @@ struct CameraTrackTests {
         var track = CameraTrack.waitingForOrigin
         track.start(at: origin)
         track.appended(origin + .seconds(1))
-        let first = track.lose(), second = track.lose()
-        #expect(first)
-        #expect(!second, "the warning is raised once")
+        #expect(!track.isLost)
+        track.lose()
+        #expect(track.isLost)
         #expect(!track.accepts(origin + .seconds(2)))
         #expect(track.end(stoppingAt: origin + .seconds(5), frameInterval: frame) == origin + .seconds(1) + frame)
     }
@@ -101,9 +101,10 @@ struct CameraTrackTests {
 
     @Test func aTrackLostBeforeTheOriginStaysEmpty() {
         var track = CameraTrack.waitingForOrigin
-        let lost = track.lose()
-        #expect(lost)
+        track.lose()
+        #expect(track.isLost)
         track.start(at: origin)
+        #expect(track.isLost)
         #expect(!track.accepts(origin + .seconds(1)))
         #expect(track.end(stoppingAt: origin + .seconds(5), frameInterval: frame) == origin)
     }
@@ -124,7 +125,6 @@ struct CameraClockTests {
         CMTimebaseCreateWithSourceClock(allocator: nil, sourceClock: host, timebaseOut: &timebase)
         let shifted = try #require(timebase)
         let now = CMClockGetTime(host)
-        // The timebase reads 0 at the host's `now`, so its time t is host time now + t.
         CMTimebaseSetRateAndAnchorTime(shifted, rate: 1, anchorTime: .zero, immediateSourceTime: now)
 
         let buffer = try CameraSamples.buffer(at: HostTime(nanoseconds: 2_000_000_000))
@@ -144,16 +144,16 @@ struct CameraTrackWriterTests {
         defer { try? FileManager.default.removeItem(at: url) }
         let writer = try CameraTrackWriter(url: url, codec: .h264, plan: plan)
         try writer.start(at: origin)
-        #expect(try writer.append(CameraSamples.buffer(at: origin + .milliseconds(-100)), at: origin + .milliseconds(-100)) == false)
+        #expect(try writer.append(CameraSamples.sample(at: origin + .milliseconds(-100))) == false)
         for index in 0..<30 {
             let pts = origin + .milliseconds(500) + .nanoseconds(Int64(index) * 33_333_333)
-            try await CameraSamples.append(at: pts, to: writer)
+            try await CameraSamples.appendWhenWriterReady(at: pts, to: writer)
         }
         try await writer.finish(at: origin + .seconds(2))
 
         let read = try await CameraSamples.read(url)
         #expect(read.samples == 30)
-        #expect(abs(read.firstPicture - 0.5) < 0.001, "first camera frame at \(read.firstPicture) s")
+        #expect(abs(read.firstSampleMovieTime - 0.5) < 0.001, "first camera frame at \(read.firstSampleMovieTime) s")
         #expect(abs(read.duration - 2) < 0.001, "a live track runs to the stop time, \(read.duration) s")
     }
 
@@ -163,17 +163,15 @@ struct CameraTrackWriterTests {
         let writer = try CameraTrackWriter(url: url, codec: .h264, plan: plan)
         try writer.start(at: origin)
         for index in 0..<30 {
-            try await CameraSamples.append(at: origin + .nanoseconds(Int64(index) * 33_333_333), to: writer)
+            try await CameraSamples.appendWhenWriterReady(at: origin + .nanoseconds(Int64(index) * 33_333_333), to: writer)
         }
-        let lost = writer.lose()
-        #expect(lost)
-        let afterLoss = origin + .seconds(1)
-        #expect(try writer.append(CameraSamples.buffer(at: afterLoss), at: afterLoss) == false)
+        writer.lose()
+        #expect(try writer.append(CameraSamples.sample(at: origin + .seconds(1))) == false)
         try await writer.finish(at: origin + .seconds(4))
 
         let read = try await CameraSamples.read(url)
         #expect(read.samples == 30)
-        #expect(abs(read.firstPicture) < 0.001)
+        #expect(abs(read.firstSampleMovieTime) < 0.001)
         let lastSample = 29 * 0.033333333
         #expect(abs(read.duration - (lastSample + 0.033333333)) < 0.002, "ends at \(read.duration) s, not at the take's 4 s")
     }
@@ -220,7 +218,6 @@ struct CameraRecoveryTests {
     }
 }
 
-/// Synthetic camera buffers and takes, so no test opens a camera.
 enum CameraSamples {
     static func temporaryMovieURL() throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appending(path: "CameraTests-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -245,11 +242,14 @@ enum CameraSamples {
         return try #require(sample)
     }
 
-    /// A real-time writer may be briefly busy; a test waits for it rather than counting a drop.
-    static func append(at pts: HostTime, to writer: CameraTrackWriter) async throws {
-        let sample = try buffer(at: pts)
+    static func sample(at pts: HostTime) throws -> HostClockSample {
+        try #require(CameraClock.onHostClock(try buffer(at: pts), from: nil))
+    }
+
+    static func appendWhenWriterReady(at pts: HostTime, to writer: CameraTrackWriter) async throws {
+        let sample = try sample(at: pts)
         for _ in 0..<500 {
-            if try writer.append(sample, at: pts) { return }
+            if try writer.append(sample) { return }
             try await Task.sleep(for: .milliseconds(2))
         }
         Issue.record("the writer never accepted the buffer at \(pts)")
@@ -258,9 +258,7 @@ enum CameraSamples {
     struct Read {
         var duration: Double
         var samples: Int
-        /// Movie time of the first sample, after the edit list. A camera that starts after the
-        /// session's origin gets an empty edit before it.
-        var firstPicture: Double
+        var firstSampleMovieTime: Double
     }
 
     static func read(_ url: URL) async throws -> Read {
@@ -274,10 +272,9 @@ enum CameraSamples {
         var samples = 0
         while let sample = output.copyNextSampleBuffer() { samples += CMSampleBufferGetNumSamples(sample) }
         let media = try #require(try await track.load(.segments).first { !$0.isEmpty })
-        return Read(duration: duration, samples: samples, firstPicture: media.timeMapping.target.start.seconds)
+        return Read(duration: duration, samples: samples, firstSampleMovieTime: media.timeMapping.target.start.seconds)
     }
 
-    /// A take whose recorder died: the manifest still says recording and names a camera.
     static func crashedTake(withCameraMovie: Bool) async throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appending(path: "CameraTests-\(UUID().uuidString).osrec", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -287,7 +284,7 @@ enum CameraSamples {
         for url in [layout.screen] + (withCameraMovie ? [layout.camera] : []) {
             let writer = try CameraTrackWriter(url: url, codec: .h264, plan: plan)
             try writer.start(at: origin)
-            for index in 0..<30 { try await append(at: origin + .nanoseconds(Int64(index) * 33_333_333), to: writer) }
+            for index in 0..<30 { try await appendWhenWriterReady(at: origin + .nanoseconds(Int64(index) * 33_333_333), to: writer) }
             try await writer.finish(at: origin + .seconds(1))
         }
         let manifest = WireManifest(
