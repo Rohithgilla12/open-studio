@@ -19,6 +19,7 @@ struct ExportCommand: AsyncParsableCommand {
     @Option(help: "30 or 60. Default: the project's format.") var fps: Int?
     @Option(help: "hevc or h264. Default: the project's format.") var codec: Codec?
     @Flag(help: "Ignore project.json and use automatic zooms with default settings and style.") var autoZooms = false
+    @Flag(help: "Leave the camera out, whatever project.json says.") var noCamera = false
     @Option(
         name: .customLong("still"),
         help: "Write the frame at this many milliseconds as <still-dir>/<take>-<ms>.png instead of a movie. Repeatable.")
@@ -43,8 +44,10 @@ struct ExportCommand: AsyncParsableCommand {
         if let size { project.edits.format.size = size }
         if let fps { project.edits.format.frameRate = FrameRate(rawValue: fps)! }
         if let codec { project.edits.format.codec = codec }
+        if noCamera { project.edits.style.camera.isVisible = false }
         for warning in project.source.loadWarnings { print("load warning: \(warning)") }
-        print("edits: \(project.origin == .saved ? "project.json" : "generated"), \(project.edits.zooms.segments.count) zooms")
+        let camera = !project.source.hasCamera ? "no camera" : project.edits.style.camera.isVisible ? "camera shown" : "camera hidden"
+        print("edits: \(project.origin == .saved ? "project.json" : "generated"), \(project.edits.zooms.segments.count) zooms, \(camera)")
 
         if !stills.isEmpty {
             let directory = URL(filePath: stillDir, directoryHint: .isDirectory)

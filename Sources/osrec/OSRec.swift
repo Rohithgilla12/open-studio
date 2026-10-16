@@ -12,7 +12,8 @@ struct OSRec: AsyncParsableCommand {
         commandName: "osrec",
         abstract: "Record a display, an area, or a window with input events into an .osrec directory, and inspect recordings.",
         subcommands: [
-            PermissionsCommand.self, Displays.self, Windows.self, Record.self, Recover.self, Inspect.self, ExportCommand.self,
+            PermissionsCommand.self, Displays.self, Windows.self, Cameras.self, Record.self, Recover.self, Inspect.self,
+            ExportCommand.self,
         ])
 }
 
@@ -22,6 +23,7 @@ struct PermissionsCommand: AsyncParsableCommand {
 
     @Flag(help: "Show the system prompts for permissions that are not granted.") var request = false
     @Flag(help: "Also require microphone access.") var mic = false
+    @Flag(help: "Also require camera access.") var camera = false
 
     func run() async throws {
         var report = Permissions.check()
@@ -36,7 +38,8 @@ struct PermissionsCommand: AsyncParsableCommand {
             print("\(permission.description): \(report.status(of: permission))")
         }
         print("grants belong to \(Permissions.responsibleProcess)")
-        let probe = RecordingConfiguration(outputDirectory: URL(filePath: "."), microphone: mic ? .systemDefault : .none)
+        let probe = RecordingConfiguration(
+            outputDirectory: URL(filePath: "."), microphone: mic ? .systemDefault : .none, camera: camera ? .systemDefault : .none)
         let missing = report.missing(for: probe)
         guard missing.isEmpty else {
             print(RecordingError.missingPermissions(missing))
@@ -75,6 +78,17 @@ struct Windows: AsyncParsableCommand {
     }
 }
 
+struct Cameras: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "List the cameras `record --camera` accepts. Lists devices without opening one.")
+
+    func run() async throws {
+        for camera in CaptureSources.cameras() {
+            print("camera \(camera.id)\(camera.isDefault ? " (default)" : ""): \(camera.name)")
+        }
+    }
+}
+
 struct Record: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Record a display, an area of it, or a window. Ctrl-C stops cleanly.",
@@ -88,6 +102,8 @@ struct Record: AsyncParsableCommand {
     @Option(help: "Window ID from `osrec windows`. Other apps' windows are hidden; the crop is the window's frame at start.")
     var window: UInt32?
     @Option(help: "\"default\" for the system microphone, or a device ID from `osrec displays`.") var mic: String?
+    @Option(help: "\"default\" for the system's preferred camera, or a device ID from `osrec cameras`. Written to camera.mov.")
+    var camera: String?
     @Option(help: "Stop after this many seconds of media time.") var duration: Double?
     @Option var fps: Int = 60
     @Option var codec: VideoCodec = .hevc
@@ -115,6 +131,7 @@ struct Record: AsyncParsableCommand {
             outputDirectory: URL(filePath: out),
             target: target,
             microphone: mic.map { $0 == "default" ? .systemDefault : .device(uniqueID: $0) } ?? .none,
+            camera: camera.map { $0 == "default" ? .systemDefault : .device(uniqueID: $0) } ?? .none,
             maxFrameRate: fps,
             codec: codec,
             maxDuration: duration.map { .seconds($0) })
@@ -233,6 +250,11 @@ struct Inspect: AsyncParsableCommand {
         if let microphone = manifest.microphone {
             print("microphone: \(microphone.deviceName), \(Int(microphone.sampleRate)) Hz, \(microphone.channelCount) ch")
         }
+        if let camera = manifest.camera {
+            print("camera: \(camera.deviceName), \(camera.pixelWidth)x\(camera.pixelHeight) up to \(camera.frameRate) fps")
+        } else {
+            print("camera: none")
+        }
         switch manifest.status {
         case .recording:
             print("status: recording")
@@ -254,6 +276,9 @@ struct Inspect: AsyncParsableCommand {
         print("screen.mov: \(screen)")
         if manifest.microphone != nil {
             print("microphone.mov: \(await MovieSummary.probe(metadata.layout.microphone))")
+        }
+        if manifest.camera != nil {
+            print("camera.mov: \(await MovieSummary.probe(metadata.layout.camera))")
         }
 
         if let clockLog {
