@@ -102,6 +102,8 @@ struct Record: AsyncParsableCommand {
     @Option(help: "Window ID from `osrec windows`. Other apps' windows are hidden; the crop is the window's frame at start.")
     var window: UInt32?
     @Option(help: "\"default\" for the system microphone, or a device ID from `osrec displays`.") var mic: String?
+    @Flag(help: "Record what the Mac plays, except this process, to system-audio.mov. Needs only Screen Recording.")
+    var systemAudio = false
     @Option(help: "\"default\" for the system's preferred camera, or a device ID from `osrec cameras`. Written to camera.mov.")
     var camera: String?
     @Option(help: "Stop after this many seconds of media time.") var duration: Double?
@@ -131,6 +133,7 @@ struct Record: AsyncParsableCommand {
             outputDirectory: URL(filePath: out),
             target: target,
             microphone: mic.map { $0 == "default" ? .systemDefault : .device(uniqueID: $0) } ?? .none,
+            systemAudio: systemAudio,
             camera: camera.map { $0 == "default" ? .systemDefault : .device(uniqueID: $0) } ?? .none,
             maxFrameRate: fps,
             codec: codec,
@@ -171,6 +174,7 @@ struct Record: AsyncParsableCommand {
             case .warning(let warning):
                 print("warning: \(warning)")
             case .ended(let finished):
+                for warning in finished.warnings { print("warning: \(warning)") }
                 print(String(format: "ended after %.3fs: %@", finished.duration.seconds, String(describing: finished.termination)))
                 if case .finalizationFailed = finished.termination {
                     print("run `osrec recover \(finished.directory.path)` to finalize")
@@ -250,6 +254,11 @@ struct Inspect: AsyncParsableCommand {
         if let microphone = manifest.microphone {
             print("microphone: \(microphone.deviceName), \(Int(microphone.sampleRate)) Hz, \(microphone.channelCount) ch")
         }
+        if let systemAudio = manifest.systemAudio {
+            print("system audio: \(Int(systemAudio.sampleRate)) Hz, \(systemAudio.channelCount) ch")
+        } else {
+            print("system audio: none")
+        }
         if let camera = manifest.camera {
             print("camera: \(camera.deviceName), \(camera.pixelWidth)x\(camera.pixelHeight) up to \(camera.frameRate) fps")
         } else {
@@ -276,6 +285,9 @@ struct Inspect: AsyncParsableCommand {
         print("screen.mov: \(screen)")
         if manifest.microphone != nil {
             print("microphone.mov: \(await MovieSummary.probe(metadata.layout.microphone))")
+        }
+        if manifest.systemAudio != nil {
+            print("system-audio.mov: \(await MovieSummary.probe(metadata.layout.systemAudio))")
         }
         if manifest.camera != nil {
             print("camera.mov: \(await MovieSummary.probe(metadata.layout.camera))")

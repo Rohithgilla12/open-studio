@@ -20,6 +20,8 @@ struct ExportCommand: AsyncParsableCommand {
     @Option(help: "hevc or h264. Default: the project's format.") var codec: Codec?
     @Flag(help: "Ignore project.json and use automatic zooms with default settings and style.") var autoZooms = false
     @Flag(help: "Leave the camera out, whatever project.json says.") var noCamera = false
+    @Flag(help: "Leave the microphone out of the mix, whatever project.json says.") var muteMic = false
+    @Flag(help: "Leave system audio out of the mix, whatever project.json says.") var muteSystem = false
     @Option(
         name: .customLong("still"),
         help: "Write the frame at this many milliseconds as <still-dir>/<take>-<ms>.png instead of a movie. Repeatable.")
@@ -45,9 +47,16 @@ struct ExportCommand: AsyncParsableCommand {
         if let fps { project.edits.format.frameRate = FrameRate(rawValue: fps)! }
         if let codec { project.edits.format.codec = codec }
         if noCamera { project.edits.style.camera.isVisible = false }
+        if muteMic { project.edits.audio.microphone.isMuted = true }
+        if muteSystem { project.edits.audio.systemAudio.isMuted = true }
         for warning in project.source.loadWarnings { print("load warning: \(warning)") }
         let camera = !project.source.hasCamera ? "no camera" : project.edits.style.camera.isVisible ? "camera shown" : "camera hidden"
-        print("edits: \(project.origin == .saved ? "project.json" : "generated"), \(project.edits.zooms.segments.count) zooms, \(camera)")
+        let audio = AudioSource.allCases.filter { $0.movie(in: project.source) != nil }.map { source in
+            let level = project.edits.audio[source]
+            return "\(source.label) \(level.isMuted ? "muted" : String(format: "at %.2f", level.volume))"
+        }
+        print("edits: \(project.origin == .saved ? "project.json" : "generated"), \(project.edits.zooms.segments.count) zooms, \(camera), "
+            + (audio.isEmpty ? "no audio" : audio.joined(separator: ", ")))
 
         if !stills.isEmpty {
             let directory = URL(filePath: stillDir, directoryHint: .isDirectory)
@@ -92,6 +101,15 @@ struct ExportCommand: AsyncParsableCommand {
             report.frames, canvas.width, canvas.height, format.frameRate.rawValue, format.codec.rawValue,
             report.wallSeconds, Double(report.frames) / report.wallSeconds, report.realTimeFactor,
             Double(report.bytes) / 1e6, destination.path))
+    }
+}
+
+extension AudioSource {
+    var label: String {
+        switch self {
+        case .microphone: "microphone"
+        case .systemAudio: "system audio"
+        }
     }
 }
 
