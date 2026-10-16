@@ -85,7 +85,8 @@ actor CaptureSink {
         camera = try CameraTrackWriter(url: plan.layout.camera, codec: plan.codec, plan: resolved.plan)
         let capture = try CameraCapture(
             resolved, queue: queue,
-            onFrame: { [unowned self] buffer, clock in
+            onFrame: { [weak self] buffer, clock in
+                guard let self else { return }
                 nonisolated(unsafe) let buffer = buffer
                 assumeIsolated { $0.receiveCamera(buffer, clock: clock) }
             },
@@ -134,7 +135,12 @@ actor CaptureSink {
         }
     }
 
-    func finish(at end: HostTime) async throws(RecordingError) -> Duration {
+    struct Finished: Sendable {
+        var duration: Duration
+        var camera: CameraTrackWriter.Outcome?
+    }
+
+    func finish(at end: HostTime) async throws(RecordingError) -> Finished {
         stopping = true
         heartbeat?.cancel()
         if let stream, !streamEnded {
@@ -155,14 +161,15 @@ actor CaptureSink {
                 report(.warning(.microphoneLost(at: endTime.duration(since: origin), error.description)))
             }
         }
+        var cameraOutcome: CameraTrackWriter.Outcome?
         if let camera {
             do {
-                try await camera.finish(at: endTime)
+                cameraOutcome = try await camera.finish(at: endTime)
             } catch {
                 report(.warning(.cameraLost(at: endTime.duration(since: origin), error.description)))
             }
         }
-        return endTime.duration(since: origin)
+        return Finished(duration: endTime.duration(since: origin), camera: cameraOutcome)
     }
 
     func abandon() async {

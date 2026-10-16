@@ -186,7 +186,9 @@ public actor RecordingSession {
         }
         var duration: Duration = .zero
         do {
-            duration = try await capture.finish(at: end)
+            let finished = try await capture.finish(at: end)
+            duration = finished.duration
+            if finished.camera == .removedEmpty { manifest.camera = nil }
         } catch {
             problems.append(error.description)
         }

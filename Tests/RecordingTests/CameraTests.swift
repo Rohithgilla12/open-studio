@@ -149,7 +149,7 @@ struct CameraTrackWriterTests {
             let pts = origin + .milliseconds(500) + .nanoseconds(Int64(index) * 33_333_333)
             try await CameraSamples.appendWhenWriterReady(at: pts, to: writer)
         }
-        try await writer.finish(at: origin + .seconds(2))
+        #expect(try await writer.finish(at: origin + .seconds(2)) == .recorded)
 
         let read = try await CameraSamples.read(url)
         #expect(read.samples == 30)
@@ -167,13 +167,24 @@ struct CameraTrackWriterTests {
         }
         writer.lose()
         #expect(try writer.append(CameraSamples.sample(at: origin + .seconds(1))) == false)
-        try await writer.finish(at: origin + .seconds(4))
+        #expect(try await writer.finish(at: origin + .seconds(4)) == .recorded)
 
         let read = try await CameraSamples.read(url)
         #expect(read.samples == 30)
         #expect(abs(read.firstSampleMovieTime) < 0.001)
         let lastSample = 29 * 0.033333333
         #expect(abs(read.duration - (lastSample + 0.033333333)) < 0.002, "ends at \(read.duration) s, not at the take's 4 s")
+    }
+
+    @Test func aCameraThatNeverDeliveredLeavesNoMovie() async throws {
+        let url = try CameraSamples.temporaryMovieURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let writer = try CameraTrackWriter(url: url, codec: .h264, plan: plan)
+        writer.lose()
+        try writer.start(at: origin)
+
+        #expect(try await writer.finish(at: origin + .seconds(3)) == .removedEmpty)
+        #expect(!FileManager.default.fileExists(atPath: url.path), "a movie with no samples does not open, so none is left")
     }
 }
 
@@ -285,7 +296,7 @@ enum CameraSamples {
             let writer = try CameraTrackWriter(url: url, codec: .h264, plan: plan)
             try writer.start(at: origin)
             for index in 0..<30 { try await appendWhenWriterReady(at: origin + .nanoseconds(Int64(index) * 33_333_333), to: writer) }
-            try await writer.finish(at: origin + .seconds(1))
+            _ = try await writer.finish(at: origin + .seconds(1))
         }
         let manifest = WireManifest(
             id: RecordingID(UUID()), createdAt: Date(),

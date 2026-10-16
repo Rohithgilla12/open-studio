@@ -53,6 +53,12 @@ final class MovieWriter {
         guard writer.status == .completed else { throw .captureFailedToStart(failureDescription) }
     }
 
+    /// Abandons the movie and removes its file.
+    func cancel() {
+        if writer.status == .writing { writer.cancelWriting() }
+        try? FileManager.default.removeItem(at: writer.outputURL)
+    }
+
     private var failureDescription: String {
         "\(writer.outputURL.lastPathComponent): \(writer.error?.localizedDescription ?? "writer status \(writer.status.rawValue)")"
     }

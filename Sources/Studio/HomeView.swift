@@ -276,6 +276,9 @@ struct SourcePickers: View {
             .frame(maxWidth: 320)
             Picker("Camera", selection: $preferences.camera) {
                 Text("None").tag(CameraSelection.none)
+                if preferences.camera == .systemDefault {
+                    Text("System default").tag(CameraSelection.systemDefault)
+                }
                 ForEach(cameras) { camera in
                     Text(camera.name).tag(CameraSelection.device(uniqueID: camera.id))
                 }

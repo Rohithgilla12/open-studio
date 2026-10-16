@@ -100,6 +100,13 @@ enum CameraTrack: Sendable, Equatable {
         return pts >= origin && last.map { pts > $0 } ?? true
     }
 
+    var hasSamples: Bool {
+        switch self {
+        case .recording(_, let last), .lost(_, let last): last != nil
+        case .waitingForOrigin, .lostBeforeOrigin: false
+        }
+    }
+
     mutating func appended(_ pts: HostTime) {
         if case .recording(let origin, _) = self { self = .recording(origin: origin, lastSample: pts) }
     }
@@ -156,8 +163,20 @@ final class CameraTrackWriter {
 
     func lose() { track.lose() }
 
-    func finish(at stop: HostTime) async throws(RecordingError) {
+    enum Outcome: Sendable, Equatable {
+        case recorded
+        /// No frame ever arrived, so the movie was removed: a movie with no samples does not open,
+        /// and the take should not name a camera it does not have.
+        case removedEmpty
+    }
+
+    func finish(at stop: HostTime) async throws(RecordingError) -> Outcome {
+        guard track.hasSamples else {
+            writer.cancel()
+            return .removedEmpty
+        }
         try await writer.finish(at: track.end(stoppingAt: stop, frameInterval: frameInterval))
+        return .recorded
     }
 }
 
