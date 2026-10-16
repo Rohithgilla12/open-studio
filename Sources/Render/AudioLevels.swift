@@ -10,6 +10,14 @@ public enum AudioSource: String, Sendable, Hashable, CaseIterable {
         allCases.filter { $0.movie(in: source) != nil }
     }
 
+    /// As a label shows it, in sentence case.
+    public var name: String {
+        switch self {
+        case .microphone: "Microphone"
+        case .systemAudio: "System audio"
+        }
+    }
+
     public func movie(in source: SourceRecording) -> URL? {
         switch self {
         case .microphone: source.microphoneMovie

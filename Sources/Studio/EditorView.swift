@@ -240,12 +240,12 @@ struct AudioLevelControls: View {
     private var level: AudioLevel { editor.project.edits.audio[source] }
 
     var body: some View {
-        LabeledContent(source.title) {
+        LabeledContent(source.name) {
             HStack {
                 Slider(
                     value: Binding(
                         get: { level.volume },
-                        set: { new in editor.drag("Change \(source.title.capitalized) Level") { $0.audio[source].volume = new } }),
+                        set: { new in editor.drag("Change \(source.name.capitalized) Level") { $0.audio[source].volume = new } }),
                     in: AudioLevel.volumeRange
                 ) { editing in
                     if !editing { editor.endDrag() }
@@ -253,23 +253,14 @@ struct AudioLevelControls: View {
                 .disabled(level.isMuted)
                 Toggle(isOn: Binding(
                     get: { level.isMuted },
-                    set: { muted in editor.apply(muted ? "Mute \(source.title.capitalized)" : "Unmute \(source.title.capitalized)") { $0.audio[source].isMuted = muted } })
+                    set: { muted in editor.apply(muted ? "Mute \(source.name.capitalized)" : "Unmute \(source.name.capitalized)") { $0.audio[source].isMuted = muted } })
                 ) {
                     Image(systemName: level.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                 }
                 .toggleStyle(.button)
                 .help(level.isMuted ? "Unmute" : "Mute")
-                .accessibilityLabel(Text(level.isMuted ? "Unmute \(source.title.lowercased())" : "Mute \(source.title.lowercased())"))
+                .accessibilityLabel(Text(level.isMuted ? "Unmute \(source.name.lowercased())" : "Mute \(source.name.lowercased())"))
             }
-        }
-    }
-}
-
-extension AudioSource {
-    var title: String {
-        switch self {
-        case .microphone: "Microphone"
-        case .systemAudio: "System audio"
         }
     }
 }

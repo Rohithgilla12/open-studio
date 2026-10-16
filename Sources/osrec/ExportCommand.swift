@@ -53,7 +53,7 @@ struct ExportCommand: AsyncParsableCommand {
         let camera = !project.source.hasCamera ? "no camera" : project.edits.style.camera.isVisible ? "camera shown" : "camera hidden"
         let audio = AudioSource.recorded(in: project.source).map { source in
             let level = project.edits.audio[source]
-            return "\(source.label) \(level.isMuted ? "muted" : String(format: "at %.2f", level.volume))"
+            return "\(source.name.lowercased()) \(level.isMuted ? "muted" : String(format: "at %.2f", level.volume))"
         }
         print("edits: \(project.origin == .saved ? "project.json" : "generated"), \(project.edits.zooms.segments.count) zooms, \(camera), "
             + (audio.isEmpty ? "no audio" : audio.joined(separator: ", ")))
@@ -101,15 +101,6 @@ struct ExportCommand: AsyncParsableCommand {
             report.frames, canvas.width, canvas.height, format.frameRate.rawValue, format.codec.rawValue,
             report.wallSeconds, Double(report.frames) / report.wallSeconds, report.realTimeFactor,
             Double(report.bytes) / 1e6, destination.path))
-    }
-}
-
-extension AudioSource {
-    var label: String {
-        switch self {
-        case .microphone: "microphone"
-        case .systemAudio: "system audio"
-        }
     }
 }
 

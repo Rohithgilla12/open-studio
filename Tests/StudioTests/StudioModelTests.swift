@@ -114,6 +114,17 @@ struct PhaseSpec {
         #expect(model.alert?.title == "The take has no system audio")
     }
 
+    @Test func aTakeThatEndedWithoutItsMicrophoneSaysSo() async throws {
+        let library = try await Library.make()
+        defer { library.remove() }
+        let fake = FakeRecording(directory: library.take, warnings: [.microphoneLost(at: .zero, "no audio")])
+        let model = StudioModel(library: library.url, services: .fake(calls: Calls(), start: { fake }))
+
+        await model.startRecording()
+        await model.stopRecording()
+        #expect(model.alert?.title == "The take has no microphone")
+    }
+
     @Test func aSystemAudioTrackThatEndedMidTakeRaisesNoAlert() async throws {
         let library = try await Library.make()
         defer { library.remove() }

@@ -323,13 +323,21 @@ public final class StudioModel {
         services.setAppHidden(false)
         if case .streamFailed(let detail) = finished.termination {
             alert = StudioAlert(title: "The recording ended early", message: "Everything up to the failure was kept. \(detail)")
-        } else if finished.warnings.contains(where: { if case .systemAudioLost(.zero, _) = $0 { true } else { false } }) {
-            alert = StudioAlert(
-                title: "The take has no system audio",
-                message: "The Mac delivered no sound during the recording, so the take was saved without system audio.")
+        } else if let missing = Self.sourcesThatNeverDelivered(finished.warnings).first {
+            alert = StudioAlert(title: "The take has no \(missing.name.lowercased())", message: missing.neverDelivered)
         }
         await refreshTakes()
         await open(finished.directory)
+    }
+
+    private static func sourcesThatNeverDelivered(_ warnings: [RecordingWarning]) -> [AudioSource] {
+        warnings.compactMap { warning in
+            switch warning {
+            case .systemAudioLost(.zero, _): .systemAudio
+            case .microphoneLost(.zero, _): .microphone
+            default: nil
+            }
+        }
     }
 
     private static func loadProject(_ take: URL) async throws(ProjectError) -> Project {
@@ -338,6 +346,15 @@ public final class StudioModel {
         } catch .source(.needsRecovery) {
             _ = try? await RecordingSession.recover(at: take)
             return try Project.open(take)
+        }
+    }
+}
+
+extension AudioSource {
+    var neverDelivered: String {
+        switch self {
+        case .microphone: "The microphone delivered no sound during the recording, so the take was saved without it."
+        case .systemAudio: "The Mac delivered no sound during the recording, so the take was saved without system audio."
         }
     }
 }
