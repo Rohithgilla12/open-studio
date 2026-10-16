@@ -158,6 +158,21 @@ struct AreaEditor {
     }
 }
 
+/// Sizes on Home and in the overlay are in screen pixels, the unit the 64 pixel minimum and the
+/// exported canvas are measured in.
+struct PixelSize: CustomStringConvertible {
+    let pixels: CGSize
+
+    var description: String { "\(Int(pixels.width)) × \(Int(pixels.height)) px" }
+}
+
+extension PixelSize {
+    @MainActor
+    init(of rect: CGRect, on screen: NSScreen) {
+        pixels = AreaEditor.pixelSize(of: rect, scale: screen.backingScaleFactor)
+    }
+}
+
 extension CGRect {
     init(corner: CGPoint, opposite: CGPoint) {
         self.init(x: min(corner.x, opposite.x), y: min(corner.y, opposite.y), width: abs(opposite.x - corner.x), height: abs(opposite.y - corner.y))
@@ -341,7 +356,7 @@ private final class AreaSelectionView: NSView {
     private func changed() {
         let minimum = CaptureTarget.minimumAreaPixels
         if let pixels = editor.pixelSize(scale: scale) {
-            sizeLabel.stringValue = "\(Int(pixels.width)) × \(Int(pixels.height))"
+            sizeLabel.stringValue = PixelSize(pixels: pixels).description
             sizeLabel.isHidden = false
             hint.stringValue = "At least \(minimum) × \(minimum) pixels"
             hint.isHidden = AreaEditor.isLargeEnough(pixels)

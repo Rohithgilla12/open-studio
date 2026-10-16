@@ -125,3 +125,18 @@ struct TargetSpec {
         #expect(model.alert?.title == "The chosen display is not connected")
     }
 }
+
+struct LaunchArgumentSpec {
+    @Test func selectAreaReadsFourNumbersInDisplayPoints() {
+        #expect(CGRect(launchArgument: "100,80,1280,720") == CGRect(x: 100, y: 80, width: 1280, height: 720))
+        #expect(CGRect(launchArgument: "0.5, 0, 64, 32.25") == CGRect(x: 0.5, y: 0, width: 64, height: 32.25))
+        #expect(CGRect(launchArgument: "100,x,1280,720") == nil)
+        #expect(CGRect(launchArgument: "100,x,80,1280,720") == nil)
+        #expect(CGRect(launchArgument: "100,80,1280") == nil)
+        #expect(CGRect(launchArgument: "100,80,-1280,720") == nil)
+    }
+
+    @Test func captureTargetNamesAreTheStoredRawValues() {
+        #expect(["screen", "area", "window"].map(CaptureKind.init(rawValue:)) == [.screen, .area, .window])
+    }
+}

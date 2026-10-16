@@ -4,7 +4,11 @@ import SwiftUI
 import Timeline
 
 /// Launch arguments: `-OpenTake <path>` opens that take in the editor once the library is listed,
-/// and `-Playhead <seconds>` then moves the playhead there.
+/// and `-Playhead <seconds>` then moves the playhead there. `-CaptureTarget screen|area|window`
+/// chooses the target on Home and saves it, as a click would. `-SelectArea x,y,w,h` opens the area
+/// overlay on the chosen display with that rectangle, in display points from its top-left, once the
+/// window appears; it switches the target to Area. The overlay still waits for Return or its Record
+/// button, so nothing records on its own.
 public struct StudioScene: Scene {
     @State private var model = StudioModel()
 
@@ -15,12 +19,18 @@ public struct StudioScene: Scene {
             RootView(model: model)
                 .frame(minWidth: 960, minHeight: 640)
                 .task {
+                    if let kind = UserDefaults.standard.string(forKey: "CaptureTarget").flatMap(CaptureKind.init(rawValue:)) {
+                        model.preferences.captureKind = kind
+                    }
                     await model.launch()
                     if let path = UserDefaults.standard.string(forKey: "OpenTake") {
                         await model.open(URL(filePath: path, directoryHint: .isDirectory))
                         if let seconds = UserDefaults.standard.string(forKey: "Playhead").flatMap(Double.init) {
                             model.openEditor?.scrub(to: .seconds(seconds))
                         }
+                    }
+                    if let area = UserDefaults.standard.string(forKey: "SelectArea").flatMap(CGRect.init(launchArgument:)) {
+                        await model.selectAreaThenRecord(preset: area)
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -90,6 +100,15 @@ struct StudioCommands: Commands {
             }
             .keyboardShortcut("o")
         }
+    }
+}
+
+extension CGRect {
+    /// `x,y,w,h`, as `-SelectArea` spells it.
+    init?(launchArgument: String) {
+        let numbers = launchArgument.split(separator: ",").map { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard numbers.allSatisfy({ $0 != nil }) else { return nil }
+        self.init(components: numbers.compactMap(\.self))
     }
 }
 

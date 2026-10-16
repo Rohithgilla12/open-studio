@@ -13,7 +13,7 @@ struct HomeView: View {
             if !model.missingPermissions.isEmpty || model.relaunchSuggested {
                 PermissionBanner(model: model)
             }
-            SourcePickers(preferences: $model.preferences, displays: displays, microphones: microphones)
+            TargetPicker(model: model, displays: displays, microphones: microphones)
             Divider()
             HStack {
                 Text("Takes").font(.title3.weight(.semibold))
@@ -38,11 +38,16 @@ struct HomeView: View {
         .onAppear {
             displays = DisplayChoice.current()
             microphones = CaptureSources.microphones()
+            model.refreshWindows()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             displays = DisplayChoice.current()
             microphones = CaptureSources.microphones()
+            model.refreshWindows()
             Task { await model.refreshTakes() }
+        }
+        .onChange(of: model.preferences.captureKind) {
+            model.refreshWindows()
         }
     }
 
@@ -57,7 +62,7 @@ struct HomeView: View {
             }
             Spacer()
             Button {
-                Task { await model.startRecording() }
+                Task { await model.record() }
             } label: {
                 Label("Record", systemImage: "record.circle.fill")
                     .font(.title3.weight(.semibold))
@@ -68,7 +73,21 @@ struct HomeView: View {
             .tint(.red)
             .controlSize(.large)
             .disabled(!model.canStartRecording)
-            .help(model.missingPermissions.isEmpty ? "Start recording the chosen display" : "Grant the permissions above first")
+            .help(recordHelp)
+        }
+    }
+
+    private var recordHelp: String {
+        switch model.readiness {
+        case .needsPermissions: "Grant the permissions above first"
+        case .needsWindow: "Choose a window to record first"
+        case .busy: "A recording or an export is under way"
+        case .ready:
+            switch model.preferences.captureKind {
+            case .screen: "Start recording the chosen display"
+            case .area: "Choose an area of the chosen display, then record it"
+            case .window: "Start recording the chosen window"
+            }
         }
     }
 }
@@ -124,6 +143,100 @@ extension Permission {
     }
 }
 
+struct TargetPicker: View {
+    @Bindable var model: StudioModel
+    let displays: [DisplayChoice]
+    let microphones: [MicrophoneInfo]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Picker("Record", selection: $model.preferences.captureKind) {
+                ForEach(CaptureKind.allCases) { kind in
+                    Text(kind.title).tag(kind)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 360)
+            SourcePickers(preferences: $model.preferences, displays: displays, microphones: microphones)
+            switch model.preferences.captureKind {
+            case .screen: EmptyView()
+            case .area: AreaSummary(model: model)
+            case .window: WindowPicker(model: model)
+            }
+        }
+    }
+}
+
+struct AreaSummary: View {
+    let model: StudioModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(summary).foregroundStyle(.secondary)
+            Button("Select Area…") {
+                Task { await model.record() }
+            }
+            .disabled(!model.canStartRecording)
+        }
+    }
+
+    private var summary: String {
+        let display = model.preferences.display
+        guard let area = model.preferences.area(on: display) else {
+            return "No area chosen on this display yet. Record asks for one first."
+        }
+        guard let screen = NSScreen.showing(display) else { return "The chosen display is not connected." }
+        return "Last area: \(PixelSize(of: area, on: screen))"
+    }
+}
+
+struct WindowPicker: View {
+    @Bindable var model: StudioModel
+
+    var body: some View {
+        if model.windows.isEmpty {
+            ContentUnavailableView(
+                "No windows to record", systemImage: "macwindow",
+                description: Text("Open the window you want to record, then come back to Open Studio."))
+                .frame(maxWidth: .infinity, maxHeight: 160)
+        } else {
+            List(model.windows, selection: $model.selectedWindowID) { window in
+                WindowRow(window: window)
+            }
+            .listStyle(.bordered(alternatesRowBackgrounds: true))
+            .frame(height: 180)
+        }
+    }
+}
+
+struct WindowRow: View {
+    let window: WindowInfo
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let icon = NSRunningApplication(processIdentifier: window.processID)?.icon {
+                Image(nsImage: icon).resizable().frame(width: 24, height: 24)
+            } else {
+                Image(systemName: "macwindow").foregroundStyle(.secondary).frame(width: 24, height: 24)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(window.title ?? window.appName).lineLimit(1)
+                if window.title != nil {
+                    Text(window.appName).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if let screen = NSScreen.showing(.id(window.displayID)) {
+                Text(PixelSize(of: window.frame, on: screen).description)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 struct SourcePickers: View {
     @Binding var preferences: RecordingPreferences
     let displays: [DisplayChoice]
@@ -138,6 +251,8 @@ struct SourcePickers: View {
                 }
             }
             .frame(maxWidth: 320)
+            .disabled(preferences.captureKind == .window)
+            .help(preferences.captureKind == .window ? "A window records on the display it is on" : "")
             Picker("Microphone", selection: $preferences.microphone) {
                 Text("None").tag(MicrophoneSelection.none)
                 Text("System default").tag(MicrophoneSelection.systemDefault)
