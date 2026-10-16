@@ -172,7 +172,7 @@ B fails the direction's core need, levels set after recording, and moves a mixer
 - **Levels default to full volume, not muted**, and a `project.json` saved before this change opens with both at full volume, which is what it exported before.
 - **Decoded levels are range-checked** like the style: a volume outside 0 to 1 makes `project.json` unreadable rather than clipping.
 - **Stereo at 48 kHz**, the rate the microphone and the export already use, as directed.
-- **One buffer of gap tolerance.** One 1024-frame buffer at 48 kHz, about 21 ms. Timestamp jitter below it is ignored, so the writer never inserts slivers of silence into continuous audio, and a buffer that comes later than that is moved back to its time.
+- **One buffer of gap tolerance.** One 1024-frame buffer at 48 kHz, about 21 ms. Timestamp jitter below it is ignored, so the writer never inserts slivers of silence into continuous audio, and a buffer that comes later than that gets silence in front of it, so it plays at its own time.
 
 ## Deviations from the decided direction
 
@@ -184,7 +184,7 @@ B fails the direction's core need, levels set after recording, and moves a mixer
 - We accept a manifest version bump for system-audio takes (older builds refuse them) in exchange for no silent loss of the sound in an older build's export or recovery.
 - We accept one more file per take in exchange for crash isolation and levels that stay editable.
 - We accept one mixed track in the export in exchange for the person's levels applying in every player.
-- We accept that drift between the output device's clock and the host clock is corrected only one way: a source that falls behind gets silence; one that runs ahead is not trimmed. Not measured on a real device.
+- We accept that drift between a device's clock and the host clock is corrected only one way. A source whose clock runs slow falls behind the host clock, and each time it is one buffer behind, it gets one buffer of silence: at 100 ppm, about 21 ms of silence every 3.6 minutes, which may be heard as a short dropout. In exchange its sync never drifts by more than one buffer. A source that runs fast is not trimmed, so it ends slightly late. Not measured on a real device.
 
 ## Alternatives considered
 
@@ -194,6 +194,40 @@ B fails the direction's core need, levels set after recording, and moves a mixer
 
 ## Open questions
 
-1. **Does the output device's clock drift against the host clock over a long take?** Each file follows its own samples. A source that runs fast would end slightly late, one that runs slow is pulled back by the gap fill. Measuring needs a long real recording.
+1. **Does a device's clock drift against the host clock over a long take, and is the drift correction heard?** Each file follows its own samples. A source that runs fast ends slightly late. One that runs slow gets a buffer of silence each time it falls a buffer behind (Tradeoffs accepted). If that is audible in a long real take, the next step is to spread the correction (one frame at a time) instead of one block. Measuring needs a long real recording.
 2. **Should a window take record only its app's audio?** ScreenCaptureKit's audio follows the content filter, and a window target's filter includes only the window's app. That is probably what a person recording one app wants, but it is not verified.
 3. **Per-source trim or offset.** A fixed offset fits sketch A as an insertion time, as for the camera. Nobody has asked for it.
+
+## Implementation reconciliation
+
+### D10
+
+Implemented on 2026-10-16. Each entry is a place where the code departs from the sketch above, or a result.
+
+1. **The gap measurement.** A scratch `AVAssetWriter` (AAC, 48 kHz stereo, 1 s fragments) was given 1024-frame buffers of a 1 kHz tone for 0 to 1 s and 2 to 3 s, with nothing in between. It read back as 2.005 s of continuous tone, with the tone that was stamped at 2 s playing at 1 s. A first buffer stamped 0.5 s after the session start read back with a 0.512 s empty edit in front of it, so only gaps after the first sample need filling. `AudioTrackWriterTests.audioAfterAGapInDeliveryStaysAtItsTime` pins the fix for interleaved float, non-interleaved float (what ScreenCaptureKit delivers), and interleaved 16-bit input; with the fill turned off it fails.
+2. **`FinishedRecording.warnings`** replaces the `SessionPhase` change first planned, as recorded in Deviations.
+3. **`TrackOutcome` is shared** by `CameraTrackWriter` and the new `AudioTrackWriter`, so the camera, the microphone, and system audio report "never delivered" the same way.
+4. **A buffer that is not linear PCM is still written**, without gap filling, rather than dropped. ScreenCaptureKit delivers linear PCM, so this path is not expected to run.
+5. **Muted sources are not decoded by the export**, and an export where every source is silent has no audio track. The preview keeps every track and sets a silent one's volume to 0, because changing the item's tracks would rebuild it.
+6. **A mixed export is stereo, and a microphone-only export keeps the microphone's channel count**, so a mono microphone take still exports mono AAC at 128 kbps, as before.
+7. **Takes without system audio export as before.** The D4 take and a copy with a synthetic mono microphone were exported at 1080p60 by `main` and by this branch. Each pair has the same size and differs in the same 7 (no audio) or 11 (microphone) bytes: the creation and modification times in `mvhd`, `tkhd`, and `mdhd`, and one byte in `mdat`. Two exports by `main` of the microphone take differ in exactly the same 11 bytes, so the difference is run to run, not the branch.
+8. **A slow clock is held in step.** `aSourceWhoseClockRunsSlowStaysWithinOneBufferOfTheHostClock` stamps 1024-frame buffers 1024/47 520 s apart (a clock 1% slow, exaggerated so 5 s shows it) and checks that the audio written ends within one buffer of the host time. Without the fill it ends about 50 ms early and the test fails.
+9. **The export's mix names only the tracks it reads.** `AVAssetReaderAudioMixOutput` documents that it throws for a mix naming a track it was not created with, and the export leaves silent sources out of the reader. `MovieComposition.audioMix(_:audibleOnly:)` builds the export's mix from the audible tracks and the preview's from every track, with the same volumes. Found by the review.
+10. **The app alerts for a microphone that never delivered too**, since this change removes its file the same way. Found by the review.
+
+
+**Verified on 2026-10-16** (Apple M2 Max, macOS 27.0.1, Xcode 27.0). `swift build` and `swift test` pass with 359 tests (329 before), in three full runs with no failure. No test records or plays anything: the recording path is driven with synthetic sample buffers through `AudioTrackWriter`, and recovery through a crashed take whose `system-audio.mov` was left unfinished mid-write. The audio tests export a generated take whose microphone plays 440 Hz from 0.5 s and whose system audio plays 1 kHz from 1 s, read the MP4 back, and measure each tone with the Goertzel algorithm: both tones at 0.40 amplitude in both channels, nothing before their starts, onsets at 0.4975 s and 0.9975 s (one buffer is 21 ms), a muted source at 3 x 10^-6 or less, and a microphone at volume 0.5 down 6.03 dB with system audio moved 0.0005 dB. `xcodebuild` builds the app, and window captures of a background launch show Home with the System audio toggle beside the Microphone picker (the permission banner lists Screen Recording and Input Monitoring only) and the editor on a synthetic take with the Audio section.
+
+**Measured: system audio costs no measurable export speed at 4K60.** The D4 take `20261013-115409.osrec` (3456 x 2234, 10 s), copied, once as it is, once with a synthetic `system-audio.mov`, and once with both a synthetic microphone and system audio (`Experiments/synthetic-audio`), exported at 3840 x 2160, 60 fps, HEVC, release build, the sides interleaved, in two sessions of five rounds:
+
+| Export | Real time, per run | Median |
+|---|---|---|
+| No audio | 1.48, 1.62, 1.63, 1.63, 1.52; 1.57, 1.62, 1.62, 1.63, 1.64 | 1.62x |
+| System audio | 1.60, 1.61, 1.60, 1.60, 1.58; 1.59, 1.61, 1.61, 1.61, 1.61 | 1.61x |
+| Microphone and system audio, mixed | 1.61, 1.61, 1.61, 1.60, 1.61; 1.59, 1.61, 1.52, 1.59, 1.61 | 1.61x |
+
+Every run wrote 600 frames, and `ffprobe` shows the mixed exports with one 48 kHz stereo AAC stream of 10.000 s beside the video, and the take without audio with none. The gap between the medians (0.01x) is smaller than the spread within each side (up to 0.15x). The limiter is the one D5 and D9 found, the per-output-frame compose and encode chain at about 96 fps: decoding, mixing, and encoding 10 s of audio adds about 0.1 s of user CPU (2.1 s against 2.2 s), inside that chain's slack. Other sessions kept the load average between 5 and 137 throughout, which is why the sides were interleaved; the low runs (1.48, 1.52) fall on both sides.
+
+**Not verified.**
+- Capture from a real stream: whether ScreenCaptureKit delivers buffers through silence (the direction says it does), its audio buffer sizes and timestamp jitter, drift of a real device against the host clock and whether the correction is heard, `excludesCurrentProcessAudio` with the preview playing during a take, which audio a window target's app filter captures, and the absence of any extra prompt.
+- The preview playing with the mix: the item's `audioMix` carries the levels (tested), but nothing was played out loud.
