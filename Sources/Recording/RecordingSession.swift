@@ -79,7 +79,7 @@ public actor RecordingSession {
                 screen: WireScreen(
                     pixelWidth: Int(display.info.pixelSize.width), pixelHeight: Int(display.info.pixelSize.height),
                     codec: WireCodec(configuration.codec), maxFrameRate: frameRate),
-                area: target.area.map(WireRect.init),
+                area: target.pixelArea.map(WireRect.init),
                 microphone: microphone.map {
                     WireMicrophone(deviceName: $0.localizedName, sampleRate: 48_000, channelCount: $0.channelCount)
                 })

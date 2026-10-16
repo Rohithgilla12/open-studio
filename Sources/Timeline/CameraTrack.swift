@@ -1,13 +1,11 @@
-/// Precomputed camera answers: a scale spring and a centre spring, plus the visible rect for
-/// clamping.
 struct CameraTrack: Sendable {
-    let bounds: Rect
+    let visibleRect: Rect
     let scale: SpringTrack<Double>
     let center: SpringTrack<Vector2>
 
     init(source: SourceRecording, zooms: ZoomTrack, settings: CameraSettings) {
         let bounds = source.visibleRect
-        self.bounds = bounds
+        visibleRect = bounds
         let frameCenter = Vector2(bounds.center)
         let segments = zooms.segments
         let zoomInTimes = segments.map { segment in
@@ -35,7 +33,7 @@ struct CameraTrack: Sendable {
                 centerChanges.append(TargetChange(time: zoomIn.seconds, target: target, spring: settings.spring))
             case .followPointer:
                 let groups = PointerGroups.build(
-                    samples: Self.samples(of: source, from: segment.range.start, until: followUntil),
+                    samples: Self.visibleSamples(of: source, from: segment.range.start, until: followUntil),
                     segmentEnd: followUntil,
                     visibleViewport: Size(width: bounds.size.width / segment.scale, height: bounds.size.height / segment.scale),
                     thinning: settings.thinningDistance, shakeThreshold: settings.shakeThreshold)
@@ -57,10 +55,7 @@ struct CameraTrack: Sendable {
         center = SpringTrack(initial: frameCenter, changes: centerChanges, rescaleShortIntervals: settings.rescaleShortIntervals)
     }
 
-    /// Samples inside the visible rect during `[start, end)`, led by the sample in effect at `start`
-    /// re-stamped to `start`. While the pointer is outside the visible rect, on another display or
-    /// beside the recorded area, the camera holds its last target.
-    static func samples(of source: SourceRecording, from start: RecordingTime, until end: RecordingTime) -> [PointerSample] {
+    static func visibleSamples(of source: SourceRecording, from start: RecordingTime, until end: RecordingTime) -> [PointerSample] {
         let pointer = source.pointer
         guard !pointer.isEmpty else { return [] }
         let inEffect = pointer.lastIndex(keyedBy: { Double($0.time.microseconds) }, atOrBefore: Double(start.microseconds))
@@ -76,7 +71,6 @@ struct CameraTrack: Sendable {
         return result.filter { source.visibleRect.contains($0.position) }
     }
 
-    /// Centres for which a viewport of `bounds / scale` stays inside the bounds.
     struct ReachableCenters {
         var x: ClosedRange<Double>
         var y: ClosedRange<Double>
@@ -97,8 +91,8 @@ struct CameraTrack: Sendable {
         let (s, scaleVelocity) = scale.evaluate(at: seconds)
         let (c, centerVelocity) = center.evaluate(at: seconds)
         let shown = max(1, s)
-        let size = Size(width: bounds.size.width / shown, height: bounds.size.height / shown)
-        let clamped = Self.reachableCenters(bounds: bounds, scale: shown).clamp(c)
+        let size = Size(width: visibleRect.size.width / shown, height: visibleRect.size.height / shown)
+        let clamped = Self.reachableCenters(bounds: visibleRect, scale: shown).clamp(c)
         return CameraState(
             viewport: Rect(origin: Point(x: clamped.x - size.width / 2, y: clamped.y - size.height / 2), size: size),
             scale: shown,

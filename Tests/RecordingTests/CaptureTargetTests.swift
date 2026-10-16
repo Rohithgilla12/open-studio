@@ -7,7 +7,7 @@ struct CaptureAreaTests {
     let retina = (points: CGSize(width: 1728, height: 1117), pixels: CGSize(width: 3456, height: 2234))
 
     func pixels(_ rect: CGRect) throws(RecordingError) -> CGRect {
-        try CaptureArea.pixels(of: rect, displayPointSize: retina.points, pixelSize: retina.pixels)
+        try CaptureArea.clippedPixels(ofPoints: rect, displayPointSize: retina.points, pixelSize: retina.pixels)
     }
 
     @Test func pointsBecomeScreenPixels() throws {
@@ -42,8 +42,8 @@ struct CaptureAreaTests {
     }
 
     @Test func aOneToOneDisplayKeepsPoints() throws {
-        let area = try CaptureArea.pixels(
-            of: CGRect(x: 0, y: 0, width: 1920, height: 1080), displayPointSize: CGSize(width: 1920, height: 1080),
+        let area = try CaptureArea.clippedPixels(
+            ofPoints: CGRect(x: 0, y: 0, width: 1920, height: 1080), displayPointSize: CGSize(width: 1920, height: 1080),
             pixelSize: CGSize(width: 1920, height: 1080))
         #expect(area == CGRect(x: 0, y: 0, width: 1920, height: 1080))
     }

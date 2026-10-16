@@ -275,8 +275,6 @@ extension WireManifest: Codable {
                 forKey: .clock, in: c, debugDescription: "clock must be \(WireClock.unit) since \(WireClock.origin)")
         }
 
-        // No version-1 writer knows the key, so its presence means a damaged or hand-made file, and
-        // reading it as the whole frame would show what the area was chosen to leave out.
         if version < FormatVersion.area, c.contains(.area) {
             throw DecodingError.dataCorruptedError(
                 forKey: .area, in: c, debugDescription: "area needs format version \(FormatVersion.area)")

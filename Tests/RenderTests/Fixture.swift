@@ -25,12 +25,11 @@ enum Fixture {
         return directory
     }
 
-    /// Turns the take into an area take: `[x, y, width, height]` in screen pixels, format version 2.
-    static func setArea(_ area: [Double], in take: URL) throws {
+    static func setArea(_ area: Rect, in take: URL) throws {
         let url = take.appending(path: "recording.json", directoryHint: .notDirectory)
         var manifest = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
         manifest["formatVersion"] = 2
-        manifest["area"] = area
+        manifest["area"] = [area.minX, area.minY, area.size.width, area.size.height]
         try JSONSerialization.data(withJSONObject: manifest).write(to: url)
     }
 

@@ -3,7 +3,6 @@ import Testing
 @testable import RecordingFormat
 @testable import Timeline
 
-/// A take recorded as an area: a 1920 x 1080 display with the area (600, 300, 800, 400) chosen.
 struct AreaSpec {
     static let frame = Size(width: 1920, height: 1080)
     static let wireArea = WireRect(x: 600, y: 300, width: 800, height: 400)

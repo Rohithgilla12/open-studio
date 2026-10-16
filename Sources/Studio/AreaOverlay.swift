@@ -187,8 +187,6 @@ enum AreaOverlay {
         }
         current = nil
         guard let chosen else { return .cancelled }
-        // The overlay has been ordered out; give the window server a refresh to take it off screen
-        // before the first frame is captured.
         try? await Task.sleep(for: .milliseconds(100))
         return .selected(chosen)
     }

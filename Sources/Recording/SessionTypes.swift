@@ -59,7 +59,6 @@ public enum RecordingWarning: Sendable, Equatable {
 public enum RecordingError: Error, Sendable, Equatable, CustomStringConvertible {
     case missingPermissions([Permission])
     case displayNotFound(DisplaySelection)
-    /// The area does not overlap its display.
     case areaOutsideDisplay
     /// The area, after clipping to its display, is narrower or shorter than
     /// `CaptureTarget.minimumAreaPixels`. The size is in screen pixels.

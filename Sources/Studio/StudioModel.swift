@@ -180,7 +180,6 @@ public final class StudioModel {
         if await chooseArea(preset: preset) { await startRecording() }
     }
 
-    /// Shows the overlay and saves the confirmed area as the target, without recording.
     @discardableResult
     public func chooseArea(preset: CGRect?) async -> Bool {
         guard readiness != .busy else { return false }

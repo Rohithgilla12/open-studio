@@ -14,8 +14,6 @@ public struct SourceRecording: Sendable {
     /// The part of the frame the take shows, for an area or a window take. nil for an entire-screen
     /// take. The movie and the events still cover the whole frame.
     public let area: Rect?
-    /// What the take shows: `area`, or the whole frame. The camera stays inside it, scale 1 shows
-    /// exactly it, and only clicks and pointer samples inside it steer the camera.
     public var visibleRect: Rect { area ?? Rect(origin: Point(x: 0, y: 0), size: frameSize) }
     /// The screen movie. File names stay in RecordingFormat; the renderer never spells them.
     public let screenMovie: URL
@@ -270,7 +268,6 @@ extension Point {
 }
 
 extension Rect {
-    /// The renderer crops to the area, so one outside the frame or with no pixels fails the load.
     init(validatingArea area: WireRect, in frame: Size) throws(SourceLoadError) {
         let values = [area.x, area.y, area.width, area.height]
         guard values.allSatisfy(\.isFinite), area.width > 0, area.height > 0, area.x >= 0, area.y >= 0,

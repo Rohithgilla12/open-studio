@@ -7,8 +7,7 @@ import Timeline
 /// and `-Playhead <seconds>` then moves the playhead there. `-CaptureTarget screen|area|window`
 /// chooses the target on Home and saves it, as a click would. `-SelectArea x,y,w,h` opens the area
 /// overlay on the chosen display with that rectangle, in display points from its top-left, once the
-/// window appears. Confirming only saves the area as the target: this mode never records, so a
-/// keystroke that lands in the overlay while it is being checked cannot start a take.
+/// window appears. Confirming only saves the area as the target; this mode never records.
 public struct StudioScene: Scene {
     @State private var model = StudioModel()
 

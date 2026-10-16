@@ -5,8 +5,7 @@ import Timeline
 // Timeline's source pixels. Core Image's bottom-left origin appears only inside FrameRecipe.
 
 /// Where the screen content sits on the canvas. Depends only on (style, canvas, source size), so a
-/// scene computes it once and every frame shares it. The source size is the source's visible rect,
-/// which for an area take is the area, not the whole frame.
+/// scene computes it once and every frame shares it.
 struct CanvasLayout: Sendable, Hashable {
     let canvas: PixelSize
     /// Aspect-fit of the source inside the padded canvas, centred, snapped to whole pixels so the

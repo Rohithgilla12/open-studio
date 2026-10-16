@@ -86,7 +86,6 @@ public struct MicrophoneInfo: Sendable, Equatable, Identifiable {
     public let isDefault: Bool
 }
 
-/// A window `CaptureTarget.window` can record.
 public struct WindowInfo: Sendable, Equatable, Identifiable {
     public let id: CGWindowID
     public let appName: String
@@ -117,7 +116,7 @@ public enum CaptureSources {
     /// On-screen, normal-level windows of other processes, frontmost first.
     ///
     /// Reads the window server's list rather than ScreenCaptureKit's, so listing windows never shows
-    /// the Screen Recording prompt. `start` looks the chosen id up in ScreenCaptureKit.
+    /// the Screen Recording prompt.
     public static func windows() -> [WindowInfo] {
         let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] ?? []
@@ -167,11 +166,11 @@ public enum CaptureSources {
         let displays = await shareableDisplays(in: content)
         switch target {
         case .display(let selection):
-            return ResolvedTarget(display: try display(selection, in: displays), content: .display, area: nil)
+            return ResolvedTarget(display: try display(selection, in: displays), content: .display, pixelArea: nil)
         case .area(let selection, let rect):
             let display = try display(selection, in: displays)
-            let area = try CaptureArea.pixels(of: rect, displayPointSize: display.info.pointSize, pixelSize: display.info.pixelSize)
-            return ResolvedTarget(display: display, content: .display, area: area)
+            let area = try CaptureArea.clippedPixels(ofPoints: rect, displayPointSize: display.info.pointSize, pixelSize: display.info.pixelSize)
+            return ResolvedTarget(display: display, content: .display, pixelArea: area)
         case .window(let id):
             guard let window = content.windows.first(where: { $0.windowID == id }) else { throw .windowNotFound(id) }
             let frames = displays.map { (id: $0.info.id, frame: $0.info.pointFrame) }
@@ -179,9 +178,9 @@ public enum CaptureSources {
                 let display = displays.first(where: { $0.info.id == displayID })
             else { throw .areaOutsideDisplay }
             let local = window.frame.offsetBy(dx: -display.info.pointFrame.minX, dy: -display.info.pointFrame.minY)
-            let area = try CaptureArea.pixels(of: local, displayPointSize: display.info.pointSize, pixelSize: display.info.pixelSize)
+            let area = try CaptureArea.clippedPixels(ofPoints: local, displayPointSize: display.info.pointSize, pixelSize: display.info.pixelSize)
             let included: ResolvedTarget.Content = window.owningApplication.map { .application($0) } ?? .window(window)
-            return ResolvedTarget(display: display, content: included, area: area)
+            return ResolvedTarget(display: display, content: included, pixelArea: area)
         }
     }
 
@@ -259,23 +258,18 @@ struct ResolvedDisplay: @unchecked Sendable {
     let info: DisplayInfo
 }
 
-/// A `CaptureTarget` checked against what is on screen at start. The ScreenCaptureKit objects are
-/// held only to build the filter, like `ResolvedDisplay`'s.
+/// The ScreenCaptureKit objects are held only to build the filter, like `ResolvedDisplay`'s.
 struct ResolvedTarget: @unchecked Sendable {
     enum Content {
         case display
-        /// A window target: the owning app's windows, so its menus and sheets show over the window.
         case application(SCRunningApplication)
-        /// A window target whose owning app ScreenCaptureKit does not report.
         case window(SCWindow)
     }
 
     let display: ResolvedDisplay
     let content: Content
-    /// Screen pixels. nil records the whole display.
-    let area: CGRect?
+    let pixelArea: CGRect?
 
-    /// Every content keeps the display's coordinate space, so events and video stay aligned.
     var filter: SCContentFilter {
         switch content {
         case .display: SCContentFilter(display: display.display, excludingWindows: [])
@@ -286,17 +280,14 @@ struct ResolvedTarget: @unchecked Sendable {
 }
 
 enum CaptureArea {
-    /// `rect` is in display points, origin top-left of the display. The result is the part on the
-    /// display, grown to whole screen pixels.
-    static func pixels(of rect: CGRect, displayPointSize: CGSize, pixelSize: CGSize) throws(RecordingError) -> CGRect {
+    static func clippedPixels(ofPoints rect: CGRect, displayPointSize: CGSize, pixelSize: CGSize) throws(RecordingError) -> CGRect {
         let clipped = rect.standardized.intersection(CGRect(origin: .zero, size: displayPointSize))
         guard !clipped.isNull, clipped.width > 0, clipped.height > 0 else { throw .areaOutsideDisplay }
         let scaleX = pixelSize.width / displayPointSize.width
         let scaleY = pixelSize.height / displayPointSize.height
-        // Points times a fractional scale land a hair off whole pixels; without the tolerance an exact
-        // edge would grow by a pixel.
-        func down(_ v: CGFloat) -> CGFloat { (v + 1e-6).rounded(.down) }
-        func up(_ v: CGFloat) -> CGFloat { (v - 1e-6).rounded(.up) }
+        let floatingPointSlack: CGFloat = 1e-6
+        func down(_ v: CGFloat) -> CGFloat { (v + floatingPointSlack).rounded(.down) }
+        func up(_ v: CGFloat) -> CGFloat { (v - floatingPointSlack).rounded(.up) }
         let minX = max(0, down(clipped.minX * scaleX)), minY = max(0, down(clipped.minY * scaleY))
         let maxX = min(pixelSize.width, up(clipped.maxX * scaleX)), maxY = min(pixelSize.height, up(clipped.maxY * scaleY))
         let pixels = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
