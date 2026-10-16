@@ -8,8 +8,12 @@ import Timeline
 /// chooses the target on Home and saves it, as a click would. `-SelectArea x,y,w,h` opens the area
 /// overlay on the chosen display with that rectangle, in display points from its top-left, once the
 /// window appears. Confirming only saves the area as the target; this mode never records.
+/// `-Library <path>` lists and records into that folder instead of `~/Movies/open-studio`, so a
+/// check never reads or recovers the person's own takes.
 public struct StudioScene: Scene {
-    @State private var model = StudioModel()
+    @State private var model = StudioModel(
+        library: UserDefaults.standard.string(forKey: "Library").map { URL(filePath: $0, directoryHint: .isDirectory) }
+            ?? StudioModel.defaultLibrary)
 
     public init() {}
 
