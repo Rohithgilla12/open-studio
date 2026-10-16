@@ -180,7 +180,9 @@ B only wins if the camera needs frames the composition cannot express, such as a
 
 ## Deviations from the decided direction
 
-None yet. Implementation reconciliation below records any.
+1. **An interrupted capture session also ends the camera track.** The direction names a disconnect. `AVCaptureSession.wasInterruptedNotification` and a runtime error end the track the same way, because the session does not resume into the same file and a frozen frame is worse than none.
+2. **Home keeps a row for a saved camera that is not connected** ("Disconnected camera"), beside None and the connected cameras. Without it the picker would have no row for its own selection, and Record would fail with `cameraNotFound` with nothing on screen saying why.
+3. **A `-Library <path>` launch argument.** Not asked for. It points the app at another folder so a background launch for a screenshot never lists or recovers the takes in `~/Movies/open-studio`.
 
 ## Tradeoffs accepted
 
@@ -204,4 +206,29 @@ None yet. Implementation reconciliation below records any.
 
 ## Implementation reconciliation
 
-To be written by D9 as the work lands.
+### D9
+
+Implemented on 2026-10-16. Each entry is a place where the code departs from the sketch above, or a result.
+
+1. **A late camera keeps its offset without any work in the recorder.** `AVAssetWriter` writes an empty edit when the first sample comes after `startSession(atSourceTime:)`, so a camera whose first frame lands 0.5 s after the origin reads back with its first picture at 0.5 s of movie time (measured with a scratch writer, then pinned by `CameraTrackWriterTests.mediaTimeZeroIsTheOriginAndALateCameraKeepsItsOffset`). `AVAssetReaderTrackOutput` reports the sample's media time, 0, not its movie time, so the test reads the edit list instead.
+2. **AVFoundation hands the compositor no camera frame where the track has no media.** A camera track listed in `requiredSourceTrackIDs` that starts at 0.5 s and ends at 1.5 s gives `sourceFrame(byTrackID:)` nil at 0.25 s and 1.75 s, and the request still succeeds, so no per-range instruction is needed (`CameraPixelSpec.noCameraFrameAtTDrawsNoOverlay`).
+3. **`MovieWriter.Kind.screen` is now `.video`**, because the camera writes with the same settings. The camera's size is set on `AVCaptureVideoDataOutput` (macOS scales there), so the writer never scales.
+4. **`SceneAssets.Key` keys on background, padding, corners, and shadow** instead of the whole `Style`, as step 5 planned.
+5. **`Style` has a hand-written decoder** so a project.json saved before the camera opens with the default overlay, and `CameraOverlay` defaults each missing key. Decoded overlays are range-checked like the rest of the style (size 0.1 to 0.5, inset 0 to 0.25).
+6. **A camera that fails to finish at stop is not recorded in the manifest.** The sink reports it as a warning, but the session is already stopping and `SessionPhase` drops warnings then. The microphone has the same gap today. The file stays readable to its last fragment.
+
+**Verified on 2026-10-16** (Apple M2 Max, macOS 27.0.1, Xcode 27.0). `swift build` and `swift test` pass with 327 tests (286 before). No test opens a camera: the recording path is driven with synthetic sample buffers through `CameraTrackWriter`, the clock conversion through a `CMTimebase`, and recovery through a crashed take with a generated `camera.mov`. The pixel tests run a generated camera with known left and right colours through `Still` and `Export.run`: the circle and the rounded rectangle at their corners and sizes, mirroring, a hidden overlay that is byte-identical to a take without a camera, and the frame just after the camera's colour change showing the new colour in both a still and the exported MP4. `osrec cameras` lists the built-in camera and an iPhone as a Continuity Camera, and no Desk View, without opening either. `xcodebuild` builds the app, and window captures of a background launch show Home with the Camera picker (with a camera chosen, the permission banner adds Camera) and the editor on a synthetic camera take with the overlay and the Camera section.
+
+**Measured: the camera costs no export speed at 4K60.** The D4 take `20261013-115409.osrec` (3456 x 2234, 10 s), copied and given a generated 1920 x 1080 30 fps HEVC `camera.mov` with `Experiments/synthetic-camera`, exported at 3840 x 2160, 60 fps, HEVC, release build, five runs per side interleaved:
+
+| Export | Real time, per run | Median |
+|---|---|---|
+| Camera shown | 1.62, 1.61, 1.62, 1.61, 1.62 | 1.62x |
+| Camera hidden (`--no-camera`) | 1.62, 1.62, 1.62, 1.62, 1.62 | 1.62x |
+| The original take, no camera | 1.49, 1.62, 1.62, 1.64, 1.63 | 1.62x |
+
+Every run wrote 600 frames. The hidden export and the take without a camera are byte-identical (20 371 959 bytes), and a frame of the camera export at 4.2 s shows the overlay. The limiter is the one D5 found, the per-output-frame compose and encode chain: all three sides run at about 97 fps, the process uses about 0.8 of a core (2.2 s user and 2.8 s sys over 6.5 s wall, with or without the camera), and halving the rate to 30 fps leaves the frame rate at 94 fps. The camera adds a hardware decode of a 1080p30 stream and one more masked draw per frame, about 0.07 s of user CPU over the export, which fits inside the slack of that chain. The machine's load average was 15 to 22 from other sessions throughout, so the sides were interleaved. The first run of the plain take (1.49x) was the cold start. The generated camera is mostly flat colour, so a real camera's noisier picture costs more to decode; that is not measured.
+
+**Not verified.**
+- Capture from a real camera: format selection on real devices, whether a real session's `synchronizationClock` is the host clock (the conversion handles both), how long `startRunning` takes, the disconnect and interruption notifications, the Camera prompt, and the camera entitlement under the hardened runtime (the ad hoc build disables the hardened runtime).
+- The preview playing with a camera. Only a paused frame was captured.
