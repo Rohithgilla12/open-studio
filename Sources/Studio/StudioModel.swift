@@ -19,12 +19,15 @@ public final class StudioModel {
     public private(set) var permissions: PermissionReport
     public private(set) var takes: [TakeSummary] = []
     public var preferences: RecordingPreferences {
-        didSet { preferences.save() }
+        didSet { preferences.save(to: defaults) }
     }
+    public private(set) var windows: [WindowInfo] = []
+    public var selectedWindowID: CGWindowID?
     public var alert: StudioAlert?
     public let library: URL
 
     @ObservationIgnored private let services: StudioServices
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let permissionsAtLaunch: PermissionReport
     @ObservationIgnored private var latestOpen = 0
     @ObservationIgnored private var launched = false
@@ -34,13 +37,14 @@ public final class StudioModel {
         self.init(library: library, services: .live)
     }
 
-    init(library: URL, services: StudioServices) {
+    init(library: URL, services: StudioServices, defaults: UserDefaults = .standard) {
         self.library = library
         self.services = services
+        self.defaults = defaults
         let report = Permissions.check()
         permissions = report
         permissionsAtLaunch = report
-        preferences = RecordingPreferences.load()
+        preferences = RecordingPreferences.load(from: defaults)
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -52,11 +56,42 @@ public final class StudioModel {
         URL.moviesDirectory.appending(path: "open-studio", directoryHint: .isDirectory)
     }
 
-    public var configuration: RecordingConfiguration {
-        RecordingConfiguration(outputDirectory: library, target: .display(preferences.display), microphone: preferences.microphone)
+    /// nil until there is something to record: an area on the chosen display, or a chosen window.
+    public var captureTarget: CaptureTarget? {
+        switch preferences.captureKind {
+        case .screen: .display(preferences.display)
+        case .area: preferences.area(on: preferences.display).map { .area(preferences.display, $0) }
+        case .window: selectedWindowID.map(CaptureTarget.window)
+        }
     }
 
-    public var missingPermissions: [Permission] { permissions.missing(for: configuration) }
+    public var configuration: RecordingConfiguration? {
+        captureTarget.map { RecordingConfiguration(outputDirectory: library, target: $0, microphone: preferences.microphone) }
+    }
+
+    /// Only the microphone changes which permissions a take needs, so this does not wait for a target.
+    public var missingPermissions: [Permission] {
+        permissions.missing(for: RecordingConfiguration(outputDirectory: library, microphone: preferences.microphone))
+    }
+
+    public enum Readiness: Equatable {
+        case ready
+        case busy
+        case needsWindow
+        case needsPermissions
+    }
+
+    /// Area is ready without a remembered area, because Record opens the selection overlay first.
+    public var readiness: Readiness {
+        switch phase {
+        case .home, .editing: break
+        case .recording, .exporting: return .busy
+        }
+        if preferences.captureKind == .window, selectedWindowID == nil { return .needsWindow }
+        return missingPermissions.isEmpty ? .ready : .needsPermissions
+    }
+
+    public var canStartRecording: Bool { readiness == .ready }
 
     public var relaunchSuggested: Bool {
         // A grant made in System Settings is invisible to this process until it relaunches, so offer
@@ -132,7 +167,39 @@ public final class StudioModel {
         openEditor?.flush()
     }
 
+    public func refreshWindows() {
+        windows = services.listWindows()
+        if let selected = selectedWindowID, !windows.contains(where: { $0.id == selected }) {
+            selectedWindowID = nil
+        }
+    }
+
+    /// What the Record button and New Recording do: Area asks for the area first, the others start.
+    public func record() async {
+        guard preferences.captureKind == .area else { return await startRecording() }
+        await selectAreaThenRecord(preset: preferences.area(on: preferences.display))
+    }
+
+    /// Confirming saves the area for the chosen display and records it; cancelling changes nothing.
+    public func selectAreaThenRecord(preset: CGRect?) async {
+        guard readiness != .busy else { return }
+        let display = preferences.display
+        switch await services.selectArea(display, preset) {
+        case .cancelled:
+            return
+        case .displayUnavailable:
+            alert = StudioAlert(title: "The chosen display is not connected", message: "Choose another display, then press Record again.")
+        case .selected(let area):
+            var chosen = preferences
+            chosen.captureKind = .area
+            chosen.setArea(area, on: display)
+            preferences = chosen
+            await startRecording()
+        }
+    }
+
     public func startRecording() async {
+        guard let configuration else { return }
         let previous: Editor?
         switch phase {
         case .home:
@@ -400,12 +467,16 @@ typealias Exporter = @Sendable (Project, URL, @escaping @Sendable (ExportProgres
 
 struct StudioServices: Sendable {
     var startRecording: @Sendable (RecordingConfiguration) async throws(RecordingError) -> any RecordingHandle
+    var selectArea: @MainActor @Sendable (DisplaySelection, _ preset: CGRect?) async -> AreaSelection
+    var listWindows: @MainActor @Sendable () -> [WindowInfo]
     var export: Exporter
     var setAppHidden: @MainActor @Sendable (Bool) -> Void
     var openURL: @MainActor @Sendable (URL) -> Void
 
     static let live = StudioServices(
         startRecording: { configuration throws(RecordingError) in try await RecordingSession.start(configuration) },
+        selectArea: { display, preset in await AreaOverlay.select(on: display, preset: preset) },
+        listWindows: { CaptureSources.windows() },
         export: { project, destination, progress throws(ExportError) in
             try await runExport(project, to: destination, progress: progress)
         },

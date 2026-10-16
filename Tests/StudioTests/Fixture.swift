@@ -118,6 +118,8 @@ final class FakeRecording: RecordingHandle {
 @MainActor
 final class Calls {
     var starts = 0
+    var configurations: [RecordingConfiguration] = []
+    var areaRequests: [(display: DisplaySelection, preset: CGRect?)] = []
     var hidden: [Bool] = []
 }
 
@@ -126,13 +128,23 @@ extension StudioServices {
     static func fake(
         calls: Calls,
         start: @escaping @Sendable () async throws(RecordingError) -> any RecordingHandle = { throw .noFramesDelivered },
+        selectArea: AreaSelection = .cancelled,
+        windows: [WindowInfo] = [],
         export: @escaping Exporter = { _, _, _ throws(ExportError) in throw .cancelled }
     ) -> StudioServices {
         StudioServices(
-            startRecording: { _ throws(RecordingError) in
-                await MainActor.run { calls.starts += 1 }
+            startRecording: { configuration throws(RecordingError) in
+                await MainActor.run {
+                    calls.starts += 1
+                    calls.configurations.append(configuration)
+                }
                 return try await start()
             },
+            selectArea: { display, preset in
+                calls.areaRequests.append((display, preset))
+                return selectArea
+            },
+            listWindows: { windows },
             export: export,
             setAppHidden: { calls.hidden.append($0) },
             openURL: { _ in })

@@ -78,7 +78,7 @@ struct StudioCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Recording") {
-                Task { await model.startRecording() }
+                Task { await model.record() }
             }
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .disabled(!model.canStartRecording)
@@ -89,15 +89,6 @@ struct StudioCommands: Commands {
                 }
             }
             .keyboardShortcut("o")
-        }
-    }
-}
-
-extension StudioModel {
-    var canStartRecording: Bool {
-        switch phase {
-        case .home, .editing: missingPermissions.isEmpty
-        case .recording, .exporting: false
         }
     }
 }
