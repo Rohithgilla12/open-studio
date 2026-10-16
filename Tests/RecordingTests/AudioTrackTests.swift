@@ -14,21 +14,21 @@ struct AudioContinuityTests {
 
     @Test func jitterUnderTheToleranceIsNotAGap() {
         var continuity = AudioContinuity()
-        continuity.wrote(.milliseconds(20), at: start)
+        continuity.wrote(.milliseconds(20), firstAt: start)
         #expect(continuity.silence(before: start + .milliseconds(20) + AudioContinuity.tolerance) == .zero)
         #expect(continuity.silence(before: start + .milliseconds(15)) == .zero, "an overlap is written as it comes")
     }
 
     @Test func aLateBufferGetsTheMissingTimeAsSilence() {
         var continuity = AudioContinuity()
-        continuity.wrote(.milliseconds(20), at: start)
+        continuity.wrote(.milliseconds(20), firstAt: start)
         #expect(continuity.silence(before: start + .seconds(1)) == .milliseconds(980))
     }
 
     @Test func theFileAdvancesByWhatWasWrittenNotByTimestamps() {
         var continuity = AudioContinuity()
-        continuity.wrote(.milliseconds(20), at: start)
-        continuity.wrote(.milliseconds(20), at: start + .milliseconds(5))
+        continuity.wrote(.milliseconds(20), firstAt: start)
+        continuity.wrote(.milliseconds(20), firstAt: start + .milliseconds(5))
         #expect(continuity.writtenThrough == start + .milliseconds(40))
     }
 }
@@ -66,6 +66,25 @@ struct AudioTrackWriterTests {
         let energy = try await AudioSamples.energy(of: url)
         #expect(energy.isQuiet(0..<0.45))
         #expect(abs(energy.onset(after: 0) - 0.5) < 0.022, "onset at \(energy.onset(after: 0)) s")
+    }
+
+    @Test func aSourceWhoseClockRunsSlowStaysWithinOneBufferOfTheHostClock() async throws {
+        let url = try AudioSamples.temporaryMovieURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let writer = try AudioTrackWriter(url: url, channels: 2)
+        try writer.start(at: origin)
+        let spacing = Duration.nanoseconds(Int64(1024.0 / 47_520 * 1e9))
+        var pts = origin
+        while pts < origin + .seconds(5) {
+            let buffer = try AudioSamples.tone(at: pts, frames: 1024, layout: .floatNonInterleaved)
+            while try !writer.append(buffer) { try await Task.sleep(for: .milliseconds(2)) }
+            pts = pts + spacing
+        }
+        #expect(try await writer.finish(at: pts) == .recorded)
+
+        let written = try await AudioSamples.frameCount(of: url)
+        let behind = pts.duration(since: origin) - .nanoseconds(Int64(Double(written) / 48_000 * 1e9))
+        #expect(abs(behind.seconds) <= 1024.0 / 48_000, "the audio ends \(behind) before the host clock")
     }
 
     @Test func aSourceThatNeverDeliveredLeavesNoMovie() async throws {
@@ -223,6 +242,18 @@ enum AudioSamples {
             stride(from: 0, to: bins.count, by: 10).map { String(format: "%.1f:%.3f", Double($0) * Self.binSeconds, bins[$0]) }
                 .joined(separator: " ")
         }
+    }
+
+    static func frameCount(of url: URL) async throws -> Int {
+        let asset = AVURLAsset(url: url)
+        let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [AVFormatIDKey: kAudioFormatLinearPCM])
+        reader.add(output)
+        reader.startReading()
+        var frames = 0
+        while let buffer = output.copyNextSampleBuffer() { frames += CMSampleBufferGetNumSamples(buffer) }
+        return frames
     }
 
     static func energy(of url: URL) async throws -> Energy {

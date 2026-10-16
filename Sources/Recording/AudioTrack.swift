@@ -18,7 +18,7 @@ struct AudioContinuity: Sendable, Equatable {
         return gap > Self.tolerance ? gap : .zero
     }
 
-    mutating func wrote(_ duration: Duration, at pts: HostTime) {
+    mutating func wrote(_ duration: Duration, firstAt pts: HostTime) {
         writtenThrough = (writtenThrough ?? pts) + duration
     }
 }
@@ -44,7 +44,7 @@ final class AudioTrackWriter {
         let format = AudioFormat(buffer)
         if let format { try fill(continuity.silence(before: pts), like: format, at: pts) }
         guard try writer.append(buffer) else { return false }
-        continuity.wrote(format?.duration(of: CMSampleBufferGetNumSamples(buffer)) ?? .zero, at: pts)
+        continuity.wrote(format?.duration(of: CMSampleBufferGetNumSamples(buffer)) ?? .zero, firstAt: pts)
         return true
     }
 
@@ -56,7 +56,7 @@ final class AudioTrackWriter {
                 try writer.append(silence)
             else { return }
             let written = format.duration(of: frames)
-            continuity.wrote(written, at: pts)
+            continuity.wrote(written, firstAt: pts)
             remaining -= written
         }
     }
