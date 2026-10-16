@@ -67,7 +67,7 @@ display pixels (3456 x 2234)
 ```
 
 - **Crop at render, not at capture.** The recorder keeps writing the full display, so `screen.mov`, `events.ndjson`, and the cursor declarations stay in one space: display pixels, origin top-left. The chosen area is one more manifest key, `area: [x, y, width, height]` in the same pixels.
-- **The manifest version is the lowest that can express the take.** A manifest with an `area` is version 2. One without is still written as version 1. Readers accept 1 and 2 and refuse anything newer, as today. A version-1 reader asked to open an area take refuses it instead of ignoring the key, which matters: ignoring it would show the whole display, including whatever the person cropped out on purpose. An entire-screen take written by this build still opens in an older build.
+- **The manifest version is the lowest that can express the take.** A manifest with an `area` is version 2. One without is still written as version 1. Readers accept 1 and 2 and refuse anything newer, as today. A version-1 manifest that names an area is refused as unreadable, because no version-1 writer knows the key. A version-1 reader asked to open an area take refuses it instead of ignoring the key, which matters: ignoring it would show the whole display, including whatever the person cropped out on purpose. An entire-screen take written by this build still opens in an older build.
 
 ### Step 2: the target is resolved once, at the boundary
 
@@ -161,7 +161,7 @@ B is smaller today and wins only on lines changed. It reintroduces, in memory, t
 - We accept full-display files for area and window takes (a 1280 x 720 area of a 3456 x 2234 display still writes 3456 x 2234 HEVC) in exchange for one coordinate space, an area that can be widened later, and no change to the recorder's hot path. `SCStreamConfiguration.sourceRect` would shrink the file and fix the crop forever, and every event would need a second conversion.
 - We accept that a window take's crop is the window's frame at start and does not follow a move or resize, in exchange for a v1 with no new event type. A later follow-crop adds window-frame events and turns `visibleRect` into a function of time; nothing in the format or Timeline blocks it.
 - We accept that the canvas rule differs between an entire-screen take and an area covering the whole screen (deviation 3) in exchange for leaving every entire-screen export byte-identical.
-- We accept black where the captured app draws nothing inside its window frame (the window's rounded corners, if the style's corner radius is smaller), because ScreenCaptureKit fills uncaptured pixels with its background colour. Measured on a real take; see Implementation reconciliation.
+- We expect black where the captured app draws nothing inside its window frame (the window's rounded corners, if the style's corner radius is smaller), because ScreenCaptureKit fills uncaptured pixels with its background colour. This is inferred from the filter's documented behaviour; no window take has been recorded yet (see Implementation reconciliation).
 
 ## Alternatives considered
 
@@ -178,4 +178,21 @@ B is smaller today and wins only on lines changed. It reintroduces, in memory, t
 
 ## Implementation reconciliation
 
-To be filled in as the units land.
+### D8
+
+Implemented on 2026-10-16. Each entry is a place where the code departs from the sketch above, or a result.
+
+1. **`CaptureSources.windows()` is synchronous and never throws**, because it reads `CGWindowListCopyWindowInfo`. Its parsing (`windowInfo(from:displays:ownProcess:)`) and the display choice are pure and unit-tested with synthetic window-list entries.
+2. **`RecordingError` gains `areaOutsideDisplay`, `areaTooSmall(width:height:)`, and `windowNotFound`.** A window that straddles displays records on the one holding most of it, and is clipped to that display like an area.
+3. **Studio's picker is a `CaptureKind` preference** (screen, area, window) plus the last area per display in display points. A window id lives on the model only. `StudioModel.record()` is the one entry point: for Area it shows the overlay through `StudioServices.selectArea`, saves the confirmed area, then starts. `readiness` (ready, busy, needs a window, needs permissions) replaces the boolean check. The overlay orders itself out and waits 100 ms before the recording starts.
+4. **`-SelectArea` never records.** The first check launched the overlay on the machine while the person was using it. The overlay takes key focus, a keystroke confirmed it, and the app tried to start a recording; Input Monitoring was missing for that build, so `start` refused before writing anything, and no take was created (checked: the library listing was unchanged). In that mode, confirming now only saves the area. The person's preferences were restored to their earlier values.
+5. **Window list thumbnails are skipped.** `SCScreenshotManager` would show the Screen Recording prompt before the person chose to record, and `CGWindowListCreateImage` is unavailable on macOS 15 and later.
+6. **Known duplication.** The overlay's pixel label rounds with one `backingScaleFactor`, while `CaptureArea.pixels` uses a scale per axis and snaps outward, so the label can under-report by a pixel but never lets a too-small area through. `.main` is resolved to a display id in both Studio and Recording.
+
+**Verified on 2026-10-16** (Apple M2 Max, macOS 27.0.1). `swift build` and `swift test` pass with 286 tests (229 before). `RecordingFormatTests.healthSeesALockHeldThroughAnotherDescriptorInThisProcess` failed once under the full parallel run and passed in the three full runs after it, the same open issue D5 recorded. `xcodebuild` builds the app. A window capture of the built app shows Home with the target picker, and the window list with app icons, titles, and sizes in pixels. The overlay was checked as an offscreen render of its view (dimmed display, clear selection with eight handles, "1920 × 1080 px", Cancel and Record), not as a window capture, after the incident in entry 4.
+
+**Area render on a real take.** The D4 take `20261013-115409.osrec` (3456 x 2234, clicks at (100, 240), (100, 300), and (3380, 1960) px) was copied and given the area (0, 0, 1600, 1000). `osrec inspect` prints the area, and auto-zoom finds one segment, [719.7, 4578.9] ms, instead of the two the whole frame gives, because the far click is outside the area. `osrec export` wrote 600 frames at 1728 x 1080 (the area's 1.6 aspect inside the 1080p box). At 2500 ms the camera is at scale 2.0000 with its viewport at (0, 37.4) + 800 x 500, inside the area, and at 5400 ms it is back to exactly (0, 0) + 1600 x 1000. Stills at 500, 2500, and 8100 ms show only the top-left of the display, with the menu bar ending at Help and no status items, the cursor on the click position, and no cursor at 8100 ms, when the pointer is at (3378, 1963), outside the area.
+
+**Not verified.**
+- A new recording with `--area` or `--window`. The process running this work has Screen Recording but not Input Monitoring, which `osrec record` requires, and TCC was not to be changed. So the recorder writing `area`, the window filter hiding other apps, and the window's corners are untested on a live capture.
+- The overlay as a real window (drawing over the desktop, focus, cursors, the 100 ms gap before the first frame).
