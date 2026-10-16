@@ -46,7 +46,6 @@ public enum Export {
         // destination, which may be inside a take.
         writer.directoryForTemporaryFiles = FileManager.default.temporaryDirectory
 
-        let tracks = movie.asset.tracks
         let videoTracks = movie.videoTracks(for: scene)
         guard videoTracks.contains(where: { $0.trackID == movie.screenTrackID }) else {
             throw .readerFailed("the composition lost its screen track")
@@ -75,13 +74,15 @@ public enum Export {
             progress(ExportProgress(framesWritten: frames, framesTotal: framesTotal))
         }
 
-        if let audioTrack = tracks.first(where: { $0.trackID == movie.audioTrackID }) {
-            // Decoded to LPCM and re-encoded, which trims the microphone exactly at the video's end
-            // without AAC priming or packet-boundary errors.
-            let channels = audioTrack.formatDescriptions
+        let audioTracks = movie.audibleTracks(project.edits.audio)
+        if !audioTracks.isEmpty {
+            // Mixed and decoded to LPCM, then re-encoded as one track, which trims the audio exactly
+            // at the video's end without AAC priming or packet-boundary errors. Stereo as soon as one
+            // source is, so a take without system audio keeps its microphone's channels.
+            let channels = audioTracks.flatMap(\.formatDescriptions)
                 .compactMap { ($0 as! CMFormatDescription).audioStreamBasicDescription?.mChannelsPerFrame }
-                .first.map(Int.init) ?? 1
-            let audioOutput = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
+                .max().map { min(Int($0), 2) } ?? 1
+            let audioOutput = AVAssetReaderAudioMixOutput(audioTracks: audioTracks, audioSettings: [
                 AVFormatIDKey: kAudioFormatLinearPCM,
                 AVSampleRateKey: 48_000,
                 AVNumberOfChannelsKey: channels,
@@ -89,6 +90,7 @@ public enum Export {
                 AVLinearPCMIsFloatKey: false,
                 AVLinearPCMIsNonInterleaved: false,
             ])
+            audioOutput.audioMix = movie.audioMix(project.edits.audio)
             let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
                 AVFormatIDKey: kAudioFormatMPEG4AAC,
                 AVSampleRateKey: 48_000,

@@ -3,8 +3,8 @@ import Foundation
 import Timeline
 
 /// Plays a project with its edits applied. Owns the rule for getting an edit onto the screen, so
-/// no view has to know it: build a new scene and swap the item's video composition. The player
-/// and item are never rebuilt.
+/// no view has to know it: build a new scene and swap the item's video composition, or for a level
+/// change swap only its audio mix. The player and item are never rebuilt.
 @MainActor
 public final class PreviewPlayer {
     /// For an `AVPlayerLayer`. Callers drive transport through the methods below, not this.
@@ -13,6 +13,10 @@ public final class PreviewPlayer {
     let item: AVPlayerItem
     private let movie: MovieComposition
     private var scene: RenderScene
+    /// The edits `scene` was built from, with the levels left out: a level change alone must not
+    /// swap the video composition, which drops the frames AVFoundation has rendered ahead.
+    private var picture: Edits
+    private var audio: AudioLevels
     private var pending: Project?
     private var applyTask: Task<Void, Never>?
     private var seekInFlight = false
@@ -31,6 +35,9 @@ public final class PreviewPlayer {
         scene = try RenderScene.make(project: project, format: project.edits.format, reusing: nil)
         item = AVPlayerItem(asset: movie.asset)
         item.videoComposition = movie.videoComposition(scene: scene, frameRate: project.edits.format.frameRate)
+        picture = Self.picture(of: project.edits)
+        audio = project.edits.audio
+        item.audioMix = movie.audioMix(audio)
         player = AVPlayer(playerItem: item)
         player.actionAtItemEnd = .pause
     }
@@ -50,6 +57,12 @@ public final class PreviewPlayer {
     }
 
     private func apply(_ project: Project) async {
+        if project.edits.audio != audio {
+            audio = project.edits.audio
+            item.audioMix = movie.audioMix(audio)
+        }
+        let picture = Self.picture(of: project.edits)
+        guard picture != self.picture else { return }
         // A style change re-renders and dithers the backdrop (about 8 million pixels at 4K), so
         // the scene is built off the main actor.
         let previous = scene
@@ -61,6 +74,7 @@ public final class PreviewPlayer {
         switch built {
         case .success(let next):
             scene = next
+            self.picture = picture
             lastError = nil
         case .failure(let error):
             lastError = error
@@ -69,6 +83,12 @@ public final class PreviewPlayer {
         // Measured (rationale, open question 1): a paused item composes its current frame again
         // on its own within 300 ms of the swap, so no seek is needed to show the edit.
         item.videoComposition = movie.videoComposition(scene: scene, frameRate: project.edits.format.frameRate)
+    }
+
+    private static func picture(of edits: Edits) -> Edits {
+        var picture = edits
+        picture.audio = .default
+        return picture
     }
 
     public func play() { player.play() }

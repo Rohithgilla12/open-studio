@@ -8,12 +8,12 @@ import Timeline
 ///
 /// `@unchecked` because AVComposition is immutable once built but not marked Sendable.
 struct MovieComposition: @unchecked Sendable {
-    /// Screen video track and, when recorded, the microphone track, both inserted at time 0, since
-    /// media time 0 in both files is recording time 0.
+    /// Screen video track and, when recorded, the audio and camera tracks, all inserted at time 0,
+    /// since media time 0 in every file is recording time 0.
     let asset: AVComposition
     let screenTrackID: CMPersistentTrackID
-    /// nil when the take has no microphone, or its movie could not be read (see `warnings`).
-    let audioTrackID: CMPersistentTrackID?
+    /// One track per source the take has, less any whose movie could not be read (see `warnings`).
+    let audioTracks: [AudioSource: CMPersistentTrackID]
     /// nil when the take has no camera, or its movie could not be read (see `warnings`).
     let camera: CameraFootage?
     let duration: CMTime
@@ -43,21 +43,22 @@ struct MovieComposition: @unchecked Sendable {
             throw .screenMovieUnreadable(error.localizedDescription)
         }
 
-        var audioTrackID: CMPersistentTrackID?
+        var audioTracks: [AudioSource: CMPersistentTrackID] = [:]
         var warnings: [String] = []
-        if let url = source.microphoneMovie {
+        for audioSource in AudioSource.allCases {
+            guard let url = audioSource.movie(in: source) else { continue }
             do {
-                let microphone = AVURLAsset(url: url)
-                guard let audio = try await microphone.loadTracks(withMediaType: .audio).first,
+                let movie = AVURLAsset(url: url)
+                guard let audio = try await movie.loadTracks(withMediaType: .audio).first,
                     let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
                 else {
                     throw RenderError.screenMovieUnreadable("no audio track")
                 }
-                let available = min(try await microphone.load(.duration), duration)
+                let available = min(try await movie.load(.duration), duration)
                 try track.insertTimeRange(CMTimeRange(start: .zero, duration: available), of: audio, at: .zero)
-                audioTrackID = track.trackID
+                audioTracks[audioSource] = track.trackID
             } catch {
-                warnings.append("microphone.mov is unreadable (\(error.localizedDescription)); exporting without audio")
+                warnings.append("\(url.lastPathComponent) is unreadable (\(error.localizedDescription)); exporting without it")
             }
         }
 
@@ -80,7 +81,7 @@ struct MovieComposition: @unchecked Sendable {
             }
         }
         return MovieComposition(
-            asset: composition.copy() as! AVComposition, screenTrackID: screenTrack.trackID, audioTrackID: audioTrackID,
+            asset: composition.copy() as! AVComposition, screenTrackID: screenTrack.trackID, audioTracks: audioTracks,
             camera: camera, duration: duration, warnings: warnings)
     }
 
@@ -99,6 +100,30 @@ struct MovieComposition: @unchecked Sendable {
     func videoTracks(for scene: RenderScene) -> [AVAssetTrack] {
         let wanted = [screenTrackID] + (camera(for: scene).map { [$0.trackID] } ?? [])
         return wanted.compactMap { id in asset.tracks.first { $0.trackID == id } }
+    }
+
+    /// The levels as AVFoundation applies them. The preview's item and the export's reader both take
+    /// this value, so what plays is what exports. nil when the take has no audio.
+    func audioMix(_ levels: AudioLevels) -> AVAudioMix? {
+        guard !audioTracks.isEmpty else { return nil }
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = AudioSource.allCases.compactMap { source in
+            guard let id = audioTracks[source] else { return nil }
+            let parameters = AVMutableAudioMixInputParameters()
+            parameters.trackID = id
+            parameters.setVolume(Float(levels[source].gain), at: .zero)
+            return parameters
+        }
+        return mix
+    }
+
+    /// The tracks that make a sound at these levels. A silent one is left out of the export's
+    /// reader, so it is never decoded; with none left, the export has no audio track.
+    func audibleTracks(_ levels: AudioLevels) -> [AVAssetTrack] {
+        AudioSource.allCases.compactMap { source in
+            guard let id = audioTracks[source], levels[source].gain > 0 else { return nil }
+            return asset.tracks.first { $0.trackID == id }
+        }
     }
 
     /// The styled video composition for one scene. Cheap: no I/O, no GPU work. Called on every

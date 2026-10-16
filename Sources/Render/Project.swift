@@ -40,7 +40,9 @@ public struct Project: Sendable {
         }
         return Project(
             source: source,
-            edits: Edits(zooms: file.zooms, settings: file.settings, style: file.style, format: file.output),
+            edits: Edits(
+                zooms: file.zooms, settings: file.settings, style: file.style, format: file.output,
+                audio: file.audio ?? .default),
             origin: .saved)
     }
 
@@ -76,7 +78,7 @@ public struct Project: Sendable {
     public func save() throws(ProjectError) {
         let file = ProjectFile(
             format: ProjectFile.formatIdentifier, version: ProjectFile.currentVersion, recordingID: source.id,
-            zooms: edits.zooms, settings: edits.settings, style: edits.style, output: edits.format)
+            zooms: edits.zooms, settings: edits.settings, style: edits.style, output: edits.format, audio: edits.audio)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         let data: Data
@@ -114,12 +116,15 @@ public struct Edits: Sendable, Hashable {
     public var settings: TimelineSettings
     public var style: Style
     public var format: OutputFormat
+    /// Applies only to the sources the take has.
+    public var audio: AudioLevels
 
-    public init(zooms: ZoomTrack, settings: TimelineSettings, style: Style, format: OutputFormat) {
+    public init(zooms: ZoomTrack, settings: TimelineSettings, style: Style, format: OutputFormat, audio: AudioLevels = .default) {
         self.zooms = zooms
         self.settings = settings
         self.style = style
         self.format = format
+        self.audio = audio
     }
 
     /// What a take gets before anyone edits it: automatic zooms, default settings and style, 1080p60.
@@ -145,7 +150,7 @@ public enum ProjectError: Error, Sendable, Equatable {
 ///
 ///     { "format": "open-studio.project", "version": 1, "recordingID": "...",
 ///       "zooms": [ {id, range: {start, end}, scale, focus} ], "settings": {...},
-///       "style": {...}, "output": {...} }
+///       "style": {...}, "output": {...}, "audio": {microphone: {volume, isMuted}, systemAudio: {...}} }
 ///
 /// Additive keys keep the version, as in the recording format: the settings decoders default
 /// missing keys. A change to the meaning of a field bumps the version.
@@ -161,6 +166,8 @@ struct ProjectFile: Codable {
     var settings: TimelineSettings
     var style: Style
     var output: OutputFormat
+    /// Absent in a file saved before levels existed.
+    var audio: AudioLevels?
 
     static func url(in take: URL) -> URL { take.appending(path: fileName, directoryHint: .notDirectory) }
 
@@ -207,6 +214,9 @@ struct ProjectFile: Codable {
         }
         if let problem = file.style.problem {
             throw .projectUnreadable("\(fileName): style \(problem)")
+        }
+        if let problem = file.audio?.problem {
+            throw .projectUnreadable("\(fileName): audio \(problem)")
         }
         return file
     }
