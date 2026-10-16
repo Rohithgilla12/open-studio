@@ -26,7 +26,6 @@ public final class StudioModel {
 
     @ObservationIgnored private let services: StudioServices
     @ObservationIgnored private let permissionsAtLaunch: PermissionReport
-    private var askedForRelaunchPermission = false
     @ObservationIgnored private var latestOpen = 0
     @ObservationIgnored private var launched = false
     @ObservationIgnored private var terminationObserver: (any NSObjectProtocol)?
@@ -60,7 +59,9 @@ public final class StudioModel {
     public var missingPermissions: [Permission] { permissions.missing(for: configuration) }
 
     public var relaunchSuggested: Bool {
-        askedForRelaunchPermission
+        // A grant made in System Settings is invisible to this process until it relaunches, so offer
+        // the relaunch whenever one of these is still missing.
+        missingPermissions.contains(where: Permission.needingRelaunch.contains)
             || Permission.needingRelaunch.contains {
                 permissions.status(of: $0) == .granted && permissionsAtLaunch.status(of: $0) != .granted
             }
@@ -99,12 +100,10 @@ public final class StudioModel {
     }
 
     public func openSettings(for permission: Permission) {
-        if Permission.needingRelaunch.contains(permission) { askedForRelaunchPermission = true }
         services.openURL(permission.settingsURL)
     }
 
     public func requestAccess(to permission: Permission) async {
-        if Permission.needingRelaunch.contains(permission) { askedForRelaunchPermission = true }
         _ = await Permissions.request(permission)
         refreshPermissions()
     }

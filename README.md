@@ -38,7 +38,12 @@ open build/Build/Products/Debug/OpenStudio.app
 
 Takes go to `~/Movies/open-studio`. The app asks for Screen Recording and Input Monitoring, and for the microphone if you pick one. macOS applies the first two only after a relaunch, so the app offers one.
 
-The project signs to run locally by default. macOS ties a privacy grant to the app's signature, and an ad hoc signature changes on every build, so each rebuild asks again. To keep grants across rebuilds, copy `App/Config/Local.xcconfig.example` to `App/Config/Local.xcconfig` and set your team (a free personal team works). `tccutil reset ScreenCapture dev.openstudio.OpenStudio` clears a grant.
+The project signs to run locally by default. macOS ties a privacy grant to the app's signature, and an ad hoc signature changes on every build, so each rebuild asks again. To keep grants across rebuilds, copy `App/Config/Local.xcconfig.example` to `App/Config/Local.xcconfig` and set your team (a free personal team works). A grant made for an ad hoc build stays pinned to that build. After you set a team, System Settings still shows Open Studio switched on, but macOS refuses the new build. Clear the old grants, then relaunch and grant again:
+
+```sh
+tccutil reset ScreenCapture dev.openstudio.OpenStudio
+tccutil reset ListenEvent dev.openstudio.OpenStudio
+```
 
 ## Record a take
 

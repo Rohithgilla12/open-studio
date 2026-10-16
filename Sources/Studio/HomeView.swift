@@ -99,7 +99,7 @@ struct PermissionBanner: View {
             }
             if model.relaunchSuggested {
                 HStack {
-                    Text("Screen Recording and Input Monitoring apply after Open Studio relaunches.")
+                    Text("Already switched on in System Settings? Screen Recording and Input Monitoring apply after Open Studio relaunches.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Spacer()
