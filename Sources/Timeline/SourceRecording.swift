@@ -11,6 +11,12 @@ public struct SourceRecording: Sendable {
     public let duration: RecordingTime
     /// Screen video size in pixels. Every `Point` in this model is in this space.
     public let frameSize: Size
+    /// The part of the frame the take shows, for an area or a window take. nil for an entire-screen
+    /// take. The movie and the events still cover the whole frame.
+    public let area: Rect?
+    /// What the take shows: `area`, or the whole frame. The camera stays inside it, scale 1 shows
+    /// exactly it, and only clicks and pointer samples inside it steer the camera.
+    public var visibleRect: Rect { area ?? Rect(origin: Point(x: 0, y: 0), size: frameSize) }
     /// The screen movie. File names stay in RecordingFormat; the renderer never spells them.
     public let screenMovie: URL
     /// nil when the manifest lists no microphone.
@@ -61,6 +67,8 @@ public struct SourceRecording: Sendable {
         guard manifest.screen.pixelWidth > 0, manifest.screen.pixelHeight > 0 else {
             throw .corrupt("screen size is \(manifest.screen.pixelWidth)×\(manifest.screen.pixelHeight)")
         }
+        let frame = Size(width: Double(manifest.screen.pixelWidth), height: Double(manifest.screen.pixelHeight))
+        let area = try manifest.area.map { wire throws(SourceLoadError) in try Rect(validatingArea: wire, in: frame) }
 
         var warnings: [String] = []
         for (type, count) in metadata.events.unknownTypeCounts.sorted(by: { $0.key < $1.key }) {
@@ -141,7 +149,8 @@ public struct SourceRecording: Sendable {
         self.id = manifest.id.uuid
         directory = metadata.layout.directory
         self.duration = RecordingTime(duration)
-        frameSize = Size(width: Double(manifest.screen.pixelWidth), height: Double(manifest.screen.pixelHeight))
+        frameSize = frame
+        self.area = area
         screenMovie = metadata.layout.screen
         microphoneMovie = manifest.microphone == nil ? nil : metadata.layout.microphone
         termination = SourceTermination(wireTermination)
@@ -257,6 +266,17 @@ extension Point {
     init(validating point: WirePoint) throws(SourceLoadError) {
         guard point.x.isFinite, point.y.isFinite else { throw .corrupt("non-finite coordinate \(point)") }
         self.init(x: point.x, y: point.y)
+    }
+}
+
+extension Rect {
+    /// The renderer crops to the area, so one outside the frame or with no pixels fails the load.
+    init(validatingArea area: WireRect, in frame: Size) throws(SourceLoadError) {
+        let values = [area.x, area.y, area.width, area.height]
+        guard values.allSatisfy(\.isFinite), area.width > 0, area.height > 0, area.x >= 0, area.y >= 0,
+            area.x + area.width <= frame.width, area.y + area.height <= frame.height
+        else { throw .corrupt("area \(values) is not inside the \(frame.width)×\(frame.height) frame") }
+        self.init(origin: Point(x: area.x, y: area.y), size: Size(width: area.width, height: area.height))
     }
 }
 

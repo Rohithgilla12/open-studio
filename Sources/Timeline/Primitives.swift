@@ -120,4 +120,10 @@ public struct Rect: Sendable, Hashable, Codable {
     public var minY: Double { origin.y }
     public var maxX: Double { origin.x + size.width }
     public var maxY: Double { origin.y + size.height }
+    public var center: Point { Point(x: origin.x + size.width / 2, y: origin.y + size.height / 2) }
+
+    /// Half-open, like `Size.contains`.
+    public func contains(_ point: Point) -> Bool {
+        point.x >= minX && point.y >= minY && point.x < maxX && point.y < maxY
+    }
 }

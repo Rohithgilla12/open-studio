@@ -1,12 +1,14 @@
-/// Precomputed camera answers: a scale spring and a center spring, plus the frame for clamping.
+/// Precomputed camera answers: a scale spring and a center spring, plus the visible rect for
+/// clamping.
 struct CameraTrack: Sendable {
-    let frameSize: Size
+    let bounds: Rect
     let scale: SpringTrack<Double>
     let center: SpringTrack<Vector2>
 
     init(source: SourceRecording, zooms: ZoomTrack, settings: CameraSettings) {
-        frameSize = source.frameSize
-        let frameCenter = Vector2(x: source.frameSize.width / 2, y: source.frameSize.height / 2)
+        let bounds = source.visibleRect
+        self.bounds = bounds
+        let frameCenter = Vector2(bounds.center)
         let segments = zooms.segments
         let zoomInTimes = segments.map { segment in
             max(segment.range.start - (settings.leadIn ?? .zero), .zero)
@@ -26,16 +28,16 @@ struct CameraTrack: Sendable {
                 scaleChanges.append(TargetChange(time: segment.range.end.seconds, target: 1, spring: settings.spring))
             }
 
-            let reach = Self.reachableCenters(frame: source.frameSize, scale: segment.scale)
+            let reach = Self.reachableCenters(bounds: bounds, scale: segment.scale)
             switch segment.focus {
             case .fixed(let x, let y):
-                let target = reach.clamp(Vector2(x: x * source.frameSize.width, y: y * source.frameSize.height))
+                let target = reach.clamp(Vector2(x: bounds.minX + x * bounds.size.width, y: bounds.minY + y * bounds.size.height))
                 centerChanges.append(TargetChange(time: zoomIn.seconds, target: target, spring: settings.spring))
             case .followPointer:
                 let groups = PointerGroups.build(
                     samples: Self.samples(of: source, from: segment.range.start, until: followUntil),
                     segmentEnd: followUntil,
-                    visibleViewport: Size(width: source.frameSize.width / segment.scale, height: source.frameSize.height / segment.scale),
+                    visibleViewport: Size(width: bounds.size.width / segment.scale, height: bounds.size.height / segment.scale),
                     thinning: settings.thinningDistance, shakeThreshold: settings.shakeThreshold)
                 for (position, group) in groups.enumerated() {
                     let at = position == 0 ? zoomIn : group.start
@@ -55,8 +57,9 @@ struct CameraTrack: Sendable {
         center = SpringTrack(initial: frameCenter, changes: centerChanges, rescaleShortIntervals: settings.rescaleShortIntervals)
     }
 
-    /// On-frame samples inside `[start, end)`, led by the sample in effect at `start` re-stamped to
-    /// `start`. While the pointer is on another display the camera holds its last on-frame target.
+    /// Samples inside the visible rect during `[start, end)`, led by the sample in effect at `start`
+    /// re-stamped to `start`. While the pointer is outside the visible rect, on another display or
+    /// beside the recorded area, the camera holds its last target.
     static func samples(of source: SourceRecording, from start: RecordingTime, until end: RecordingTime) -> [PointerSample] {
         let pointer = source.pointer
         guard !pointer.isEmpty else { return [] }
@@ -70,10 +73,10 @@ struct CameraTrack: Sendable {
             if pointer[index].time > start { result.append(pointer[index]) }
             index += 1
         }
-        return result.filter { source.frameSize.contains($0.position) }
+        return result.filter { source.visibleRect.contains($0.position) }
     }
 
-    /// Centers for which a viewport of `frame / scale` stays inside the frame.
+    /// Centers for which a viewport of `bounds / scale` stays inside the bounds.
     struct ReachableCenters {
         var x: ClosedRange<Double>
         var y: ClosedRange<Double>
@@ -83,18 +86,19 @@ struct CameraTrack: Sendable {
         }
     }
 
-    static func reachableCenters(frame: Size, scale: Double) -> ReachableCenters {
-        let halfWidth = frame.width / max(scale, 1) / 2
-        let halfHeight = frame.height / max(scale, 1) / 2
-        return ReachableCenters(x: halfWidth...(frame.width - halfWidth), y: halfHeight...(frame.height - halfHeight))
+    static func reachableCenters(bounds: Rect, scale: Double) -> ReachableCenters {
+        let halfWidth = bounds.size.width / max(scale, 1) / 2
+        let halfHeight = bounds.size.height / max(scale, 1) / 2
+        return ReachableCenters(
+            x: (bounds.minX + halfWidth)...(bounds.maxX - halfWidth), y: (bounds.minY + halfHeight)...(bounds.maxY - halfHeight))
     }
 
     func state(at seconds: Double) -> CameraState {
         let (s, scaleVelocity) = scale.evaluate(at: seconds)
         let (c, centerVelocity) = center.evaluate(at: seconds)
         let shown = max(1, s)
-        let size = Size(width: frameSize.width / shown, height: frameSize.height / shown)
-        let clamped = Self.reachableCenters(frame: frameSize, scale: shown).clamp(c)
+        let size = Size(width: bounds.size.width / shown, height: bounds.size.height / shown)
+        let clamped = Self.reachableCenters(bounds: bounds, scale: shown).clamp(c)
         return CameraState(
             viewport: Rect(origin: Point(x: clamped.x - size.width / 2, y: clamped.y - size.height / 2), size: size),
             scale: shown,
@@ -105,8 +109,8 @@ struct CameraTrack: Sendable {
 }
 
 public struct CameraState: Sendable, Hashable {
-    /// Source pixels shown in the output frame. Always inside the frame: center is clamped so the
-    /// viewport never leaves the source, and scale is clamped to >= 1 (the camera spring is
+    /// Source pixels shown in the output frame. Always inside the source's visible rect: center is
+    /// clamped so the viewport never leaves it, and scale is clamped to >= 1 (the camera spring is
     /// underdamped and would otherwise overshoot below 1 when zooming out).
     public let viewport: Rect
     public let scale: Double

@@ -133,7 +133,7 @@ enum Fixture {
 /// Synthetic metadata for tests that need a `SourceRecording` without a directory.
 enum Synthetic {
     static func source(
-        duration: Double, frame: Size = Size(width: 1920, height: 1080),
+        duration: Double, frame: Size = Size(width: 1920, height: 1080), area: WireRect? = nil,
         pointer: [(Double, Double, Double)] = [], clicks: [Double] = [], keys: [Double] = [],
         cursorChanges: [(Double, RecordingFormat.CursorImageID?)] = [],
         declarations: [CursorImageDeclaration] = []
@@ -159,6 +159,7 @@ enum Synthetic {
                 displayID: 1, name: "Synthetic", pointFrame: WireRect(x: 0, y: 0, width: frame.width, height: frame.height),
                 refreshRate: 60),
             screen: WireScreen(pixelWidth: Int(frame.width), pixelHeight: Int(frame.height), codec: .hevc, maxFrameRate: 60),
+            area: area,
             microphone: nil,
             status: .finalized(duration: time(duration), termination: .userStopped))
         let log = try EventLog.decode(try events.reduce(into: Data()) { $0.append(try EventLog.encodeLine($1)) })

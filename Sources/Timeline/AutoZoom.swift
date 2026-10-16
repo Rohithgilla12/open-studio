@@ -15,7 +15,7 @@ public struct ZoomSegment: Sendable, Hashable, Codable, Identifiable {
     public enum Focus: Sendable, Hashable, Codable {
         /// Follow the time-weighted centroid of pointer groups inside the segment.
         case followPointer
-        /// Hold on a fixed point, normalized to the frame (0...1, origin top-left).
+        /// Hold on a fixed point, normalized to the source's visible rect (0...1, origin top-left).
         case fixed(x: Double, y: Double)
     }
 
@@ -74,7 +74,7 @@ public enum AutoZoom {
     /// The automatic segments for a recording, sorted and non-overlapping.
     public static func segments(for source: SourceRecording, settings: AutoZoomSettings = AutoZoomSettings()) -> [ZoomSegment] {
         segments(
-            clickTimes: source.buttons.filter { source.frameSize.contains($0.position) }.map(\.time),
+            clickTimes: source.buttons.filter { source.visibleRect.contains($0.position) }.map(\.time),
             duration: source.duration, settings: settings)
     }
 
