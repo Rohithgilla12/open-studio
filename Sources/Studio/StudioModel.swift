@@ -53,7 +53,7 @@ public final class StudioModel {
     }
 
     public var configuration: RecordingConfiguration {
-        RecordingConfiguration(outputDirectory: library, display: preferences.display, microphone: preferences.microphone)
+        RecordingConfiguration(outputDirectory: library, target: .display(preferences.display), microphone: preferences.microphone)
     }
 
     public var missingPermissions: [Permission] { permissions.missing(for: configuration) }

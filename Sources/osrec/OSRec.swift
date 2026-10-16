@@ -10,8 +10,10 @@ import Synchronization
 struct OSRec: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "osrec",
-        abstract: "Record a display with input events into an .osrec directory, and inspect recordings.",
-        subcommands: [PermissionsCommand.self, Displays.self, Record.self, Recover.self, Inspect.self, ExportCommand.self])
+        abstract: "Record a display, an area, or a window with input events into an .osrec directory, and inspect recordings.",
+        subcommands: [
+            PermissionsCommand.self, Displays.self, Windows.self, Record.self, Recover.self, Inspect.self, ExportCommand.self,
+        ])
 }
 
 struct PermissionsCommand: AsyncParsableCommand {
@@ -60,10 +62,31 @@ struct Displays: AsyncParsableCommand {
     }
 }
 
+struct Windows: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "List the windows `record --window` accepts, frontmost first.")
+
+    func run() async throws {
+        for window in CaptureSources.windows() {
+            let name = window.title.map { "\(window.appName): \($0)" } ?? window.appName
+            print(
+                "window \(window.id): \(name), \(Int(window.frame.width))x\(Int(window.frame.height)) pt at "
+                    + "(\(Int(window.frame.minX)), \(Int(window.frame.minY))) on display \(window.displayID)")
+        }
+    }
+}
+
 struct Record: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "Record a display. Ctrl-C stops cleanly.")
+    static let configuration = CommandConfiguration(
+        abstract: "Record a display, an area of it, or a window. Ctrl-C stops cleanly.",
+        discussion: """
+            The whole display is always captured; an area or a window is recorded as the part of it the take \
+            shows, and export crops to it.
+            """)
 
     @Option(help: "Display ID from `osrec displays`. Default: the main display.") var display: UInt32?
+    @Option(help: "Record only x,y,width,height of the display, in points from its top-left corner.") var area: AreaArgument?
+    @Option(help: "Window ID from `osrec windows`. Other apps' windows are hidden; the crop is the window's frame at start.")
+    var window: UInt32?
     @Option(help: "\"default\" for the system microphone, or a device ID from `osrec displays`.") var mic: String?
     @Option(help: "Stop after this many seconds of media time.") var duration: Double?
     @Option var fps: Int = 60
@@ -74,10 +97,23 @@ struct Record: AsyncParsableCommand {
         help: "Call abort() after this many seconds without finalizing, to exercise `osrec recover`.")
     var abortAfter: Double?
 
+    func validate() throws {
+        if window != nil, display != nil || area != nil {
+            throw ValidationError("--window records the window's own display; it cannot be combined with --display or --area")
+        }
+    }
+
+    var target: CaptureTarget {
+        let selection: DisplaySelection = display.map { .id($0) } ?? .main
+        if let window { return .window(window) }
+        if let area { return .area(selection, area.rect) }
+        return .display(selection)
+    }
+
     func run() async throws {
         let configuration = RecordingConfiguration(
             outputDirectory: URL(filePath: out),
-            display: display.map { .id($0) } ?? .main,
+            target: target,
             microphone: mic.map { $0 == "default" ? .systemDefault : .device(uniqueID: $0) } ?? .none,
             maxFrameRate: fps,
             codec: codec,
@@ -191,6 +227,9 @@ struct Inspect: AsyncParsableCommand {
         print("recorder: \(manifest.recorder.name) \(manifest.recorder.version) on macOS \(manifest.recorder.osVersion)")
         print("display: \(manifest.display.name) (\(manifest.display.displayID)), \(Int(manifest.display.refreshRate)) Hz")
         print("screen: \(manifest.screen.pixelWidth)x\(manifest.screen.pixelHeight) \(manifest.screen.codec) up to \(manifest.screen.maxFrameRate) fps")
+        if let area = manifest.area {
+            print("area: \(Int(area.x)),\(Int(area.y)) \(Int(area.width))x\(Int(area.height)) px")
+        }
         if let microphone = manifest.microphone {
             print("microphone: \(microphone.deviceName), \(Int(microphone.sampleRate)) Hz, \(microphone.channelCount) ch")
         }
@@ -326,6 +365,18 @@ extension WireEvent {
 }
 
 extension VideoCodec: ExpressibleByArgument {}
+
+struct AreaArgument: ExpressibleByArgument {
+    let rect: CGRect
+
+    init?(argument: String) {
+        let parts = argument.split(separator: ",").map { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard parts.count == 4, let x = parts[0], let y = parts[1], let width = parts[2], let height = parts[3],
+            width > 0, height > 0
+        else { return nil }
+        rect = CGRect(x: x, y: y, width: width, height: height)
+    }
+}
 
 extension Duration {
     var seconds: Double {

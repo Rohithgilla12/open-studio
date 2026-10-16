@@ -38,7 +38,8 @@ public actor RecordingSession {
     public static func start(_ configuration: RecordingConfiguration) async throws(RecordingError) -> RecordingSession {
         let missing = Permissions.check().missing(for: configuration)
         guard missing.isEmpty else { throw .missingPermissions(missing) }
-        let display = try await CaptureSources.resolve(configuration.display)
+        let target = try await CaptureSources.resolve(configuration.target)
+        let display = target.display
         let microphone = try CaptureSources.resolve(configuration.microphone)
         let layout = try createDirectory(under: configuration.outputDirectory)
         guard let lock = try acquireLock(in: layout) else {
@@ -53,7 +54,7 @@ public actor RecordingSession {
         let input = InputCapture(displayScale: mapping.scale.width, onTapReenabled: inlet.tapReenabled)
         let capture = CaptureSink(
             plan: CaptureSink.Plan(
-                display: display, codec: configuration.codec, frameRate: frameRate,
+                target: target, codec: configuration.codec, frameRate: frameRate,
                 microphone: microphone.map { ($0.uniqueID, $0.channelCount) }, layout: layout),
             eventsWritten: { inlet.eventsWritten }, report: inlet.send)
 
@@ -78,6 +79,7 @@ public actor RecordingSession {
                 screen: WireScreen(
                     pixelWidth: Int(display.info.pixelSize.width), pixelHeight: Int(display.info.pixelSize.height),
                     codec: WireCodec(configuration.codec), maxFrameRate: frameRate),
+                area: target.area.map(WireRect.init),
                 microphone: microphone.map {
                     WireMicrophone(deviceName: $0.localizedName, sampleRate: 48_000, channelCount: $0.channelCount)
                 })

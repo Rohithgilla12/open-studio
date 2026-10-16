@@ -9,7 +9,7 @@ actor CaptureSink {
     nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
 
     struct Plan: Sendable {
-        var display: ResolvedDisplay
+        var target: ResolvedTarget
         var codec: VideoCodec
         var frameRate: Int
         var microphone: (uniqueID: String, channels: Int)?
@@ -41,7 +41,7 @@ actor CaptureSink {
     }
 
     func startCapture() async throws(RecordingError) {
-        let info = plan.display.info
+        let info = plan.target.display.info
         screen = try MovieWriter(
             url: plan.layout.screen, kind: .screen(codec: plan.codec, pixelSize: info.pixelSize, frameRate: plan.frameRate))
         if let microphone = plan.microphone {
@@ -61,7 +61,7 @@ actor CaptureSink {
         }
         let output = StreamOutput(sink: self)
         let stream = SCStream(
-            filter: SCContentFilter(display: plan.display.display, excludingWindows: []),
+            filter: plan.target.filter,
             configuration: configuration, delegate: output)
         do {
             try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: queue)

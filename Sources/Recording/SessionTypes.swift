@@ -1,3 +1,4 @@
+public import CoreGraphics
 public import Foundation
 
 public struct FinishedRecording: Sendable, Equatable {
@@ -58,6 +59,13 @@ public enum RecordingWarning: Sendable, Equatable {
 public enum RecordingError: Error, Sendable, Equatable, CustomStringConvertible {
     case missingPermissions([Permission])
     case displayNotFound(DisplaySelection)
+    /// The area does not overlap its display.
+    case areaOutsideDisplay
+    /// The area, after clipping to its display, is narrower or shorter than
+    /// `CaptureTarget.minimumAreaPixels`. The size is in screen pixels.
+    case areaTooSmall(width: Int, height: Int)
+    /// The window closed, or left the screen, before recording started.
+    case windowNotFound(CGWindowID)
     case microphoneNotFound(MicrophoneSelection)
     case outputDirectoryUnwritable(URL, String)
     case captureFailedToStart(String)
@@ -71,6 +79,12 @@ public enum RecordingError: Error, Sendable, Equatable, CustomStringConvertible 
             return "missing permissions: \(panes). Grant them to \(Permissions.responsibleProcess), which owns this process's grants."
         case .displayNotFound(let selection):
             return "display not found: \(selection)"
+        case .areaOutsideDisplay:
+            return "the area does not overlap its display"
+        case .areaTooSmall(let width, let height):
+            return "the area is \(width)x\(height) px; each side must be at least \(CaptureTarget.minimumAreaPixels) px"
+        case .windowNotFound(let id):
+            return "window \(id) is not on screen"
         case .microphoneNotFound(let selection):
             return "microphone not found: \(selection)"
         case .outputDirectoryUnwritable(let url, let detail):
