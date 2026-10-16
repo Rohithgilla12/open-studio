@@ -101,6 +101,19 @@ struct TargetSpec {
         #expect(calls.configurations.map(\.target) == [.area(.id(3), chosen)])
     }
 
+    @Test func choosingAnAreaSavesItWithoutRecording() async {
+        let scratch = ScratchDefaults()
+        defer { scratch.remove() }
+        let calls = Calls()
+        let chosen = CGRect(x: 0, y: 0, width: 200, height: 100)
+        let model = model(scratch, calls, kind: .screen, selectArea: .selected(chosen))
+
+        #expect(await model.chooseArea(preset: nil))
+        #expect(calls.starts == 0)
+        #expect(model.preferences.captureKind == .area)
+        #expect(RecordingPreferences.load(from: scratch.defaults).area(on: .id(3)) == chosen)
+    }
+
     @Test func cancellingTheOverlayRecordsNothingAndKeepsTheLastArea() async {
         let scratch = ScratchDefaults()
         defer { scratch.remove() }

@@ -7,8 +7,8 @@ import Timeline
 /// and `-Playhead <seconds>` then moves the playhead there. `-CaptureTarget screen|area|window`
 /// chooses the target on Home and saves it, as a click would. `-SelectArea x,y,w,h` opens the area
 /// overlay on the chosen display with that rectangle, in display points from its top-left, once the
-/// window appears. The overlay still waits for Return or its Record button, so nothing records on
-/// its own; confirming switches the target to Area and records.
+/// window appears. Confirming only saves the area as the target: this mode never records, so a
+/// keystroke that lands in the overlay while it is being checked cannot start a take.
 public struct StudioScene: Scene {
     @State private var model = StudioModel()
 
@@ -30,7 +30,7 @@ public struct StudioScene: Scene {
                         }
                     }
                     if let area = UserDefaults.standard.string(forKey: "SelectArea").flatMap(CGRect.init(launchArgument:)) {
-                        await model.selectAreaThenRecord(preset: area)
+                        await model.chooseArea(preset: area)
                     }
                 }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

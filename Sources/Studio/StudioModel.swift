@@ -177,19 +177,26 @@ public final class StudioModel {
     }
 
     public func selectAreaThenRecord(preset: CGRect?) async {
-        guard readiness != .busy else { return }
+        if await chooseArea(preset: preset) { await startRecording() }
+    }
+
+    /// Shows the overlay and saves the confirmed area as the target, without recording.
+    @discardableResult
+    public func chooseArea(preset: CGRect?) async -> Bool {
+        guard readiness != .busy else { return false }
         let display = preferences.display
         switch await services.selectArea(display, preset) {
         case .cancelled:
-            return
+            return false
         case .displayUnavailable:
             alert = StudioAlert(title: "The chosen display is not connected", message: "Choose another display, then press Record again.")
+            return false
         case .selected(let area):
             var chosen = preferences
             chosen.captureKind = .area
             chosen.setArea(area, on: display)
             preferences = chosen
-            await startRecording()
+            return true
         }
     }
 
