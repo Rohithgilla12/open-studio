@@ -6,7 +6,10 @@ import Timeline
 /// Builds the Core Image recipe for one frame. The only file that knows Core Image's bottom-left
 /// origin; everything it receives is in top-left canvas pixels.
 enum FrameRecipe {
-    static func image(source: CIImage, geometry: FrameGeometry, layout: CanvasLayout, assets: SceneAssets) -> CIImage {
+    static func image(
+        source: CIImage, geometry: FrameGeometry, layout: CanvasLayout, assets: SceneAssets,
+        camera: (image: CIImage, geometry: CameraOverlayGeometry)? = nil
+    ) -> CIImage {
         let canvasHeight = layout.canvas.height
         let canvasRect = CGRect(x: 0, y: 0, width: layout.canvas.width, height: layout.canvas.height)
         let sourceHeight = Int(source.extent.height)
@@ -40,11 +43,38 @@ enum FrameRecipe {
 
         // The content is drawn over the backdrop before masking, so a sub-pixel gap at the snapped
         // edge shows backdrop instead of a transparent (black) seam inside the mask.
-        return content.composited(over: assets.backdrop)
+        let framed = content.composited(over: assets.backdrop)
             .applyingFilter("CIBlendWithMask", parameters: [
                 kCIInputBackgroundImageKey: assets.backdrop, kCIInputMaskImageKey: assets.contentMask,
             ])
+        guard let camera else { return framed.cropped(to: canvasRect) }
+        return overlay(camera.image, geometry: camera.geometry, canvasHeight: canvasHeight)
+            .composited(over: framed)
             .cropped(to: canvasRect)
+    }
+
+    /// The camera picture, mirrored if asked, scaled to fill the overlay, centred, and cut to its shape.
+    /// Drawn after the content mask, so it is not clipped by the screen's rounded edge.
+    private static func overlay(_ camera: CIImage, geometry: CameraOverlayGeometry, canvasHeight: Int) -> CIImage {
+        let rect = flipped(geometry.rect, canvasHeight: canvasHeight)
+        let extent = camera.extent
+        var picture = camera.transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY))
+        if geometry.mirrored {
+            picture = picture.transformed(by: CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: extent.width, ty: 0))
+        }
+        let scaled = Size(width: extent.width * geometry.scale, height: extent.height * geometry.scale)
+        let mask = CIFilter(name: "CIRoundedRectangleGenerator", parameters: [
+            kCIInputExtentKey: CIVector(cgRect: rect),
+            kCIInputRadiusKey: geometry.cornerRadius,
+            kCIInputColorKey: CIColor.white,
+        ])!.outputImage!
+        return picture
+            .applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: geometry.scale, kCIInputAspectRatioKey: 1])
+            .transformed(by: CGAffineTransform(translationX: rect.midX - scaled.width / 2, y: rect.midY - scaled.height / 2))
+            .cropped(to: rect)
+            .applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: CIImage.empty(), kCIInputMaskImageKey: mask,
+            ])
     }
 
     /// Top-left rect to Core Image's bottom-left space.

@@ -47,10 +47,11 @@ public enum Export {
         writer.directoryForTemporaryFiles = FileManager.default.temporaryDirectory
 
         let tracks = movie.asset.tracks
-        guard let screenTrack = tracks.first(where: { $0.trackID == movie.screenTrackID }) else {
+        let videoTracks = movie.videoTracks(for: scene)
+        guard videoTracks.contains(where: { $0.trackID == movie.screenTrackID }) else {
             throw .readerFailed("the composition lost its screen track")
         }
-        let videoOutput = AVAssetReaderVideoCompositionOutput(videoTracks: [screenTrack], videoSettings: nil)
+        let videoOutput = AVAssetReaderVideoCompositionOutput(videoTracks: videoTracks, videoSettings: nil)
         videoOutput.videoComposition = movie.videoComposition(scene: scene, frameRate: format.frameRate)
         videoOutput.alwaysCopiesSampleData = false
         let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: [

@@ -12,16 +12,92 @@ public struct Style: Sendable, Hashable, Codable {
     /// Corner radius of the screen content.
     public var cornerRadius: Double
     public var shadow: Shadow
+    /// Drawn only for a take with a camera.
+    public var camera: CameraOverlay
 
-    public init(background: Background, padding: Double, cornerRadius: Double, shadow: Shadow) {
+    public init(background: Background, padding: Double, cornerRadius: Double, shadow: Shadow, camera: CameraOverlay = .default) {
         self.background = background
         self.padding = padding
         self.cornerRadius = cornerRadius
         self.shadow = shadow
+        self.camera = camera
     }
 
     public static let `default` = Style(
         background: .gradient(.dusk), padding: 0.08, cornerRadius: 0.012, shadow: .soft)
+
+    private enum CodingKeys: String, CodingKey {
+        case background, padding, cornerRadius, shadow, camera
+    }
+
+    /// A project saved before the camera existed has no `camera` key and gets the default overlay.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            background: try c.decode(Background.self, forKey: .background),
+            padding: try c.decode(Double.self, forKey: .padding),
+            cornerRadius: try c.decode(Double.self, forKey: .cornerRadius),
+            shadow: try c.decode(Shadow.self, forKey: .shadow),
+            camera: try c.decodeIfPresent(CameraOverlay.self, forKey: .camera) ?? .default)
+    }
+}
+
+/// Where and how the camera footage sits on the canvas. Lengths are fractions of the canvas's
+/// shorter side, like every other style length.
+public struct CameraOverlay: Sendable, Hashable {
+    public enum Corner: String, Sendable, Hashable, Codable, CaseIterable {
+        case topLeft, topRight, bottomLeft, bottomRight
+    }
+
+    public enum Shape: String, Sendable, Hashable, Codable, CaseIterable {
+        /// A circle showing the centre of the camera's picture.
+        case circle
+        /// The whole picture at the camera's aspect, with rounded corners.
+        case roundedRectangle
+    }
+
+    public var isVisible: Bool
+    public var corner: Corner
+    /// The overlay's height: a circle's diameter, or a rounded rectangle's height.
+    public var size: Double
+    /// Gap between the overlay and the two canvas edges of its corner.
+    public var inset: Double
+    public var shape: Shape
+    /// Flipped left to right, the way people see themselves in a video call.
+    public var mirrored: Bool
+
+    public init(isVisible: Bool, corner: Corner, size: Double, inset: Double, shape: Shape, mirrored: Bool) {
+        self.isVisible = isVisible
+        self.corner = corner
+        self.size = size
+        self.inset = inset
+        self.shape = shape
+        self.mirrored = mirrored
+    }
+
+    public static let `default` = CameraOverlay(
+        isVisible: true, corner: .bottomRight, size: 0.25, inset: 0.03, shape: .circle, mirrored: true)
+    public static let sizeRange: ClosedRange<Double> = 0.1...0.5
+    public static let insetRange: ClosedRange<Double> = 0...0.25
+}
+
+/// Each key defaults when missing, so a hand-edited or older file still opens.
+extension CameraOverlay: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case isVisible, corner, size, inset, shape, mirrored
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let fallback = CameraOverlay.default
+        self.init(
+            isVisible: try c.decodeIfPresent(Bool.self, forKey: .isVisible) ?? fallback.isVisible,
+            corner: try c.decodeIfPresent(Corner.self, forKey: .corner) ?? fallback.corner,
+            size: try c.decodeIfPresent(Double.self, forKey: .size) ?? fallback.size,
+            inset: try c.decodeIfPresent(Double.self, forKey: .inset) ?? fallback.inset,
+            shape: try c.decodeIfPresent(Shape.self, forKey: .shape) ?? fallback.shape,
+            mirrored: try c.decodeIfPresent(Bool.self, forKey: .mirrored) ?? fallback.mirrored)
+    }
 }
 
 public enum Background: Sendable, Hashable {

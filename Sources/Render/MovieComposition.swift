@@ -14,6 +14,8 @@ struct MovieComposition: @unchecked Sendable {
     let screenTrackID: CMPersistentTrackID
     /// nil when the take has no microphone, or its movie could not be read (see `warnings`).
     let audioTrackID: CMPersistentTrackID?
+    /// nil when the take has no camera, or its movie could not be read (see `warnings`).
+    let cameraTrackID: CMPersistentTrackID?
     let duration: CMTime
     let warnings: [String]
 
@@ -58,9 +60,39 @@ struct MovieComposition: @unchecked Sendable {
                 warnings.append("microphone.mov is unreadable (\(error.localizedDescription)); exporting without audio")
             }
         }
+
+        var cameraTrackID: CMPersistentTrackID?
+        if let url = source.cameraMovie {
+            do {
+                let camera = AVURLAsset(url: url)
+                guard let video = try await camera.loadTracks(withMediaType: .video).first,
+                    let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+                else {
+                    throw RenderError.screenMovieUnreadable("no video track")
+                }
+                // The camera's own edit list carries a late start, so inserting from 0 keeps it aligned.
+                let available = min(try await camera.load(.duration), duration)
+                try track.insertTimeRange(CMTimeRange(start: .zero, duration: available), of: video, at: .zero)
+                cameraTrackID = track.trackID
+            } catch {
+                warnings.append("camera.mov is unreadable (\(error.localizedDescription)); exporting without the camera")
+            }
+        }
         return MovieComposition(
             asset: composition.copy() as! AVComposition, screenTrackID: screenTrack.trackID, audioTrackID: audioTrackID,
-            duration: duration, warnings: warnings)
+            cameraTrackID: cameraTrackID, duration: duration, warnings: warnings)
+    }
+
+    /// The camera track, when the scene draws it. A hidden overlay leaves it out of the request, so
+    /// AVFoundation never decodes it.
+    func cameraTrackID(for scene: RenderScene) -> CMPersistentTrackID? {
+        scene.cameraOverlay == nil ? nil : cameraTrackID
+    }
+
+    /// The video tracks the composition reads for `scene`, for an `AVAssetReaderVideoCompositionOutput`.
+    func videoTracks(for scene: RenderScene) -> [AVAssetTrack] {
+        let wanted = [screenTrackID] + (cameraTrackID(for: scene).map { [$0] } ?? [])
+        return wanted.compactMap { id in asset.tracks.first { $0.trackID == id } }
     }
 
     /// The styled video composition for one scene. Cheap: no I/O, no GPU work. Called on every
@@ -79,7 +111,9 @@ struct MovieComposition: @unchecked Sendable {
         composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
         composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
         composition.instructions = [
-            SceneInstruction(timeRange: CMTimeRange(start: .zero, duration: duration), screenTrackID: screenTrackID, scene: scene)
+            SceneInstruction(
+                timeRange: CMTimeRange(start: .zero, duration: duration), screenTrackID: screenTrackID,
+                cameraTrackID: cameraTrackID(for: scene), scene: scene)
         ]
         return composition
     }

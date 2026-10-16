@@ -15,6 +15,9 @@ final class RenderScene: Sendable {
     let layout: CanvasLayout
     let pressedScale: Double
     let assets: SceneAssets
+    /// nil when the take has no camera or the overlay is hidden, so the compositor never asks
+    /// for camera frames.
+    let cameraOverlay: CameraOverlay?
 
     /// Reuses `previous.assets` when style, canvas, and source are unchanged, which is the common
     /// case while dragging a zoom: only the Timeline is rebuilt (about 10 ms for 30 minutes of
@@ -23,7 +26,9 @@ final class RenderScene: Sendable {
         let style = project.edits.style
         let canvas = project.canvasSize(for: format)
         let layout = CanvasLayout(style: style, canvas: canvas, source: project.source.visibleRect.size)
-        let key = SceneAssets.Key(style: style, canvas: canvas, source: project.source.id)
+        let key = SceneAssets.Key(
+            background: style.background, padding: style.padding, cornerRadius: style.cornerRadius, shadow: style.shadow,
+            canvas: canvas, source: project.source.id)
         let assets: SceneAssets
         if let previous, previous.assets.key == key {
             assets = previous.assets
@@ -32,30 +37,44 @@ final class RenderScene: Sendable {
         }
         return RenderScene(
             timeline: project.timeline, layout: layout, pressedScale: project.edits.settings.cursor.pressedScale,
-            assets: assets)
+            assets: assets, cameraOverlay: project.source.hasCamera && style.camera.isVisible ? style.camera : nil)
     }
 
-    private init(timeline: Timeline, layout: CanvasLayout, pressedScale: Double, assets: SceneAssets) {
+    private init(timeline: Timeline, layout: CanvasLayout, pressedScale: Double, assets: SceneAssets, cameraOverlay: CameraOverlay?) {
         self.timeline = timeline
         self.layout = layout
         self.pressedScale = pressedScale
         self.assets = assets
+        self.cameraOverlay = cameraOverlay
     }
 
     /// The whole per-frame drawing step. Pure: the CIImage is a recipe, and rendering it is the
     /// caller's job (the compositor renders into AVFoundation's pooled buffer).
-    func image(source: CIImage, at t: RecordingTime) -> CIImage {
+    ///
+    /// `camera` is the camera frame covering `t`, or nil when there is none at `t` (before the
+    /// camera's first frame, or after it was lost), in which case no overlay is drawn.
+    func image(source: CIImage, camera: CIImage? = nil, at t: RecordingTime) -> CIImage {
         let frame = timeline.frame(at: t)
         let cursorInfo = frame.cursor.image.flatMap { timeline.source.cursorImages[$0] }
         let geometry = FrameGeometry(frame: frame, layout: layout, cursorImage: cursorInfo, pressedScale: pressedScale)
-        return FrameRecipe.image(source: source, geometry: geometry, layout: layout, assets: assets)
+        var overlay: (image: CIImage, geometry: CameraOverlayGeometry)?
+        if let camera, let cameraOverlay {
+            let size = Size(width: camera.extent.width, height: camera.extent.height)
+            overlay = (camera, CameraOverlayGeometry(overlay: cameraOverlay, canvas: layout.canvas, camera: size))
+        }
+        return FrameRecipe.image(source: source, geometry: geometry, layout: layout, assets: assets, camera: overlay)
     }
 }
 
 /// GPU-side resources that depend on (style, canvas, source) but not on time. Built once per key.
 final class SceneAssets: Sendable {
+    /// The parts of the style the backdrop draws. The camera overlay is not among them, so moving
+    /// it never re-renders the backdrop.
     struct Key: Sendable, Hashable {
-        let style: Style
+        let background: Background
+        let padding: Double
+        let cornerRadius: Double
+        let shadow: Shadow
         let canvas: PixelSize
         let source: UUID
     }
@@ -75,7 +94,7 @@ final class SceneAssets: Sendable {
     static func build(_ key: Key, layout: CanvasLayout, project: Project) throws(RenderError) -> SceneAssets {
         let canvas = layout.canvas
         let full = CGRect(x: 0, y: 0, width: canvas.width, height: canvas.height)
-        var backdrop = try Backdrop.background(key.style.background, canvas: canvas, directory: project.source.directory)
+        var backdrop = try Backdrop.background(key.background, canvas: canvas, directory: project.source.directory)
         if let shadow = layout.shadow {
             let shape = CIFilter(name: "CIRoundedRectangleGenerator", parameters: [
                 kCIInputExtentKey: CIVector(cgRect: FrameRecipe.flipped(shadow.rect, canvasHeight: canvas.height)),

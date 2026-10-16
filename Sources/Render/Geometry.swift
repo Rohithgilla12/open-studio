@@ -103,3 +103,44 @@ struct CursorPlacement: Sendable, Hashable {
     let rect: Rect
     let opacity: Double
 }
+
+/// Where the camera footage is drawn on the canvas for one frame. Depends on the camera frame's
+/// size, which the compositor knows only once it holds the frame, so it is built per frame; it is a
+/// few multiplications.
+struct CameraOverlayGeometry: Sendable, Hashable {
+    /// Canvas pixels, top-left, snapped to whole pixels.
+    let rect: Rect
+    let cornerRadius: Double
+    /// Canvas pixels per camera pixel. The camera is scaled to fill the rect and centred, so a
+    /// circle shows the middle of a wide picture.
+    let scale: Double
+    let mirrored: Bool
+
+    init(overlay: CameraOverlay, canvas: PixelSize, camera: Size) {
+        let unit = Double(min(canvas.width, canvas.height))
+        let inset = (overlay.inset * unit).rounded()
+        let height = (overlay.size * unit).rounded()
+        var size = switch overlay.shape {
+        case .circle: Size(width: height, height: height)
+        case .roundedRectangle: Size(width: (height * camera.width / camera.height).rounded(), height: height)
+        }
+        // A very wide camera in a narrow canvas would run off the far edge, so it shrinks to fit.
+        let room = Double(canvas.width) - 2 * inset
+        if size.width > room {
+            size = Size(width: room.rounded(.down), height: (size.height * room / size.width).rounded(.down))
+        }
+        let left = overlay.corner == .topLeft || overlay.corner == .bottomLeft
+        let top = overlay.corner == .topLeft || overlay.corner == .topRight
+        rect = Rect(
+            origin: Point(
+                x: left ? inset : Double(canvas.width) - inset - size.width,
+                y: top ? inset : Double(canvas.height) - inset - size.height),
+            size: size)
+        cornerRadius = switch overlay.shape {
+        case .circle: size.width / 2
+        case .roundedRectangle: 0.12 * min(size.width, size.height)
+        }
+        scale = max(size.width / camera.width, size.height / camera.height)
+        mirrored = overlay.mirrored
+    }
+}

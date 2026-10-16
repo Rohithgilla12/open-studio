@@ -220,6 +220,8 @@ extension Style {
         if !(shadow.opacity >= 0 && shadow.opacity <= 1) { return "shadow opacity \(shadow.opacity) is not in [0, 1]" }
         if !(shadow.blur >= 0) { return "shadow blur \(shadow.blur) is negative" }
         if !shadow.offsetY.isFinite { return "shadow offset is not finite" }
+        if !CameraOverlay.sizeRange.contains(camera.size) { return "camera size \(camera.size) is not in \(CameraOverlay.sizeRange)" }
+        if !CameraOverlay.insetRange.contains(camera.inset) { return "camera inset \(camera.inset) is not in \(CameraOverlay.insetRange)" }
         if case .image(let asset) = background, asset.fileName.isEmpty || asset.fileName.contains("/") {
             return "background image name \(asset.fileName) is not a file name"
         }

@@ -16,7 +16,9 @@ struct ProjectSpec {
                     ZoomSegment(range: TimeRange(start: .seconds(5), end: .seconds(9))!, scale: 2, focus: .followPointer),
                 ]),
                 settings: .default,
-                style: Style(background: .gradient(.ember), padding: 0.05, cornerRadius: 0.02, shadow: .none),
+                style: Style(
+                    background: .gradient(.ember), padding: 0.05, cornerRadius: 0.02, shadow: .none,
+                    camera: CameraOverlay(isVisible: false, corner: .topLeft, size: 0.3, inset: 0.05, shape: .roundedRectangle, mirrored: false)),
                 format: OutputFormat(size: .uhd2160, frameRate: .fps30, codec: .h264))
             edits.settings.camera.leadIn = CameraSettings.observedLeadIn
             edits.settings.cursor.smoothing = .none
@@ -132,6 +134,35 @@ struct ProjectSpec {
         #expect(project.edits.settings.cursor.smoothing == CursorSettings().smoothing)
         #expect(project.edits.settings.autoZoom == AutoZoomSettings())
         #expect(project.edits.settings.camera.leadIn == CameraSettings.observedLeadIn)
+    }
+
+    @Test func projectFileFromBeforeTheCameraOpensWithTheDefaultOverlay() throws {
+        let take = try Fixture.metadataOnlyTake()
+        defer { try? FileManager.default.removeItem(at: take) }
+        try writeProjectJSON(take) { object in
+            var style = object["style"] as! [String: Any]
+            style.removeValue(forKey: "camera")
+            object["style"] = style
+        }
+        let project = try Project.open(take)
+        #expect(project.origin == .saved)
+        #expect(project.edits.style.camera == .default)
+    }
+
+    @Test func cameraSizeOutOfRangeIsUnreadable() throws {
+        let take = try Fixture.metadataOnlyTake()
+        defer { try? FileManager.default.removeItem(at: take) }
+        try writeProjectJSON(take) { object in
+            var style = object["style"] as! [String: Any]
+            style["camera"] = ["size": 0.9]
+            object["style"] = style
+        }
+        let error = #expect(throws: ProjectError.self) { try Project.open(take) }
+        guard case .projectUnreadable(let detail) = try #require(error) else {
+            Issue.record("expected projectUnreadable")
+            return
+        }
+        #expect(detail.contains("camera size"))
     }
 
     @Test func newerVersionIsRefusedAndNeverRewritten() throws {

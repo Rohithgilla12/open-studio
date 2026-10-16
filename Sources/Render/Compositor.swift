@@ -14,14 +14,19 @@ final class SceneInstruction: NSObject, AVVideoCompositionInstructionProtocol, S
     let enablePostProcessing = false
     /// Every frame changes (camera, cursor), so AVFoundation must never reuse a previous output.
     let containsTweening = true
-    var requiredSourceTrackIDs: [NSValue]? { [NSNumber(value: screenTrackID)] }
+    var requiredSourceTrackIDs: [NSValue]? {
+        [NSNumber(value: screenTrackID)] + (cameraTrackID.map { [NSNumber(value: $0)] } ?? [])
+    }
     let passthroughTrackID = kCMPersistentTrackID_Invalid
     let screenTrackID: CMPersistentTrackID
+    /// nil unless the scene draws the camera.
+    let cameraTrackID: CMPersistentTrackID?
     let scene: RenderScene
 
-    init(timeRange: CMTimeRange, screenTrackID: CMPersistentTrackID, scene: RenderScene) {
+    init(timeRange: CMTimeRange, screenTrackID: CMPersistentTrackID, cameraTrackID: CMPersistentTrackID?, scene: RenderScene) {
         self.timeRange = timeRange
         self.screenTrackID = screenTrackID
+        self.cameraTrackID = cameraTrackID
         self.scene = scene
     }
 }
@@ -103,7 +108,10 @@ final class StyledCompositor: NSObject, AVVideoCompositing, Sendable {
             return
         }
         let scene = instruction.scene
-        let image = scene.image(source: CIImage(cvPixelBuffer: source), at: t)
+        // AVFoundation hands over the camera sample covering t, the latest at or before it, and
+        // nothing where the camera track has no media.
+        let camera = instruction.cameraTrackID.flatMap { request.sourceFrame(byTrackID: $0) }.map { CIImage(cvPixelBuffer: $0) }
+        let image = scene.image(source: CIImage(cvPixelBuffer: source), camera: camera, at: t)
         let bounds = CGRect(x: 0, y: 0, width: scene.layout.canvas.width, height: scene.layout.canvas.height)
         RenderDevice.context.render(image, to: output, bounds: bounds, colorSpace: RenderDevice.outputColorSpace)
         CVBufferSetAttachment(output, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
