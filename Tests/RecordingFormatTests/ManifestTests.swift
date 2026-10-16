@@ -21,6 +21,7 @@ struct ManifestTests {
                 .microphoneLost(at: MediaTime(microseconds: 1_500_000), message: "device removed"),
                 .inputTapReenabled(at: MediaTime(microseconds: 2_250_000)),
                 .cameraLost(at: MediaTime(microseconds: 2_750_000), message: "device disconnected"),
+                .systemAudioLost(at: .zero, message: "no system audio arrived"),
             ])
 
         #expect(try WireManifest.decode(manifest.encoded()) == manifest)
@@ -172,6 +173,42 @@ struct ManifestTests {
         let data = try Fixtures.editJSON(Fixtures.manifest().encoded()) {
             $0["formatVersion"] = 2
             $0["camera"] = ["deviceName": "USB Camera", "pixelWidth": 1280, "pixelHeight": 720, "frameRate": 30]
+        }
+
+        let error = #expect(throws: FormatError.self) { try WireManifest.decode(data) }
+        guard case .manifestUnreadable = error else {
+            Issue.record("expected manifestUnreadable, got \(String(describing: error))")
+            return
+        }
+    }
+
+    @Test func systemAudioRoundTripsAsVersion4WhateverElseTheTakeHas() throws {
+        var manifest = Fixtures.manifest()
+        manifest.systemAudio = WireSystemAudio(sampleRate: 48_000, channelCount: 2)
+
+        for camera in [nil, WireCamera(deviceName: "USB Camera", pixelWidth: 1280, pixelHeight: 720, frameRate: 30)] {
+            manifest.camera = camera
+            let json = try JSONSerialization.jsonObject(with: manifest.encoded()) as! [String: Any]
+            #expect(json["formatVersion"] as? Int == 4)
+            let systemAudio = json["systemAudio"] as? [String: Any]
+            #expect(systemAudio?["sampleRate"] as? Double == 48_000)
+            #expect(systemAudio?["channelCount"] as? Int == 2)
+            #expect(try WireManifest.decode(manifest.encoded()) == manifest)
+        }
+    }
+
+    @Test func aTakeWithoutSystemAudioKeepsItsVersion() throws {
+        var manifest = Fixtures.manifest()
+        manifest.camera = WireCamera(deviceName: "USB Camera", pixelWidth: 1280, pixelHeight: 720, frameRate: 30)
+        let json = try JSONSerialization.jsonObject(with: manifest.encoded()) as! [String: Any]
+        #expect(json["formatVersion"] as? Int == 3)
+        #expect(json["systemAudio"] == nil)
+    }
+
+    @Test func aVersion3ManifestWithSystemAudioIsRefusedRatherThanExportedWithoutIt() throws {
+        let data = try Fixtures.editJSON(Fixtures.manifest().encoded()) {
+            $0["formatVersion"] = 3
+            $0["systemAudio"] = ["sampleRate": 48_000, "channelCount": 2]
         }
 
         let error = #expect(throws: FormatError.self) { try WireManifest.decode(data) }

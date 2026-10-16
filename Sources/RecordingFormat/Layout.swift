@@ -5,6 +5,7 @@ public import Foundation
 ///       events.ndjson       append-only input and cursor events, one JSON object per line
 ///       screen.mov          fragmented QuickTime movie, cursor not drawn
 ///       microphone.mov      fragmented QuickTime movie, present only when the manifest lists one
+///       system-audio.mov    fragmented QuickTime movie, present only when the manifest lists it
 ///       camera.mov          fragmented QuickTime movie, present only when the manifest lists one
 ///       cursors/<id>.png    content-addressed cursor images
 ///       .lock               held with flock(2) by the live recorder, never read for content
@@ -18,6 +19,7 @@ public struct RecordingLayout: Sendable, Hashable {
     private static let eventsName = "events.ndjson"
     private static let screenName = "screen.mov"
     private static let microphoneName = "microphone.mov"
+    private static let systemAudioName = "system-audio.mov"
     private static let cameraName = "camera.mov"
     private static let cursorsName = "cursors"
     private static let lockName = ".lock"
@@ -30,6 +32,7 @@ public struct RecordingLayout: Sendable, Hashable {
     public var events: URL { directory.appending(path: Self.eventsName, directoryHint: .notDirectory) }
     public var screen: URL { directory.appending(path: Self.screenName, directoryHint: .notDirectory) }
     public var microphone: URL { directory.appending(path: Self.microphoneName, directoryHint: .notDirectory) }
+    public var systemAudio: URL { directory.appending(path: Self.systemAudioName, directoryHint: .notDirectory) }
     public var camera: URL { directory.appending(path: Self.cameraName, directoryHint: .notDirectory) }
     public var cursors: URL { directory.appending(path: Self.cursorsName, directoryHint: .isDirectory) }
     public var lock: URL { directory.appending(path: Self.lockName, directoryHint: .notDirectory) }
@@ -59,12 +62,15 @@ public struct RecordingLayout: Sendable, Hashable {
 /// A manifest is written with the lowest version that can express it, so a take that uses nothing
 /// newer stays readable by older builds.
 public enum FormatVersion {
-    public static let current = 3
+    public static let current = 4
     /// Added `area`. An older reader would ignore the key and show the whole display, including what
     /// the person cropped out, so the key needs a version an older reader refuses.
     static let area = 2
     /// Added `camera`. An older reader would export the take without the person in it, and an older
     /// recovery would rewrite the manifest without the key, losing the camera for good.
     static let camera = 3
+    /// Added `systemAudio`. An older reader would export the take without its sound, and an older
+    /// recovery would rewrite the manifest without the key, losing the sound for good.
+    static let systemAudio = 4
     public static let identifier = "open-studio.recording"
 }
