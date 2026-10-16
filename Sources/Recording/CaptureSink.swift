@@ -13,6 +13,7 @@ actor CaptureSink {
         var codec: VideoCodec
         var frameRate: Int
         var microphone: (uniqueID: String, channels: Int)?
+        var camera: ResolvedCamera?
         var layout: RecordingLayout
     }
 
@@ -23,6 +24,8 @@ actor CaptureSink {
     private var output: StreamOutput?
     private var screen: MovieWriter?
     private var microphone: MovieWriter?
+    private var camera: CameraTrackWriter?
+    private var cameraCapture: CameraCapture?
     private var origin: HostTime?
     private var lastFrame: (buffer: CMSampleBuffer, pts: HostTime)?
     private var heartbeat: DispatchSourceTimer?
@@ -43,9 +46,27 @@ actor CaptureSink {
     func startCapture() async throws(RecordingError) {
         let info = plan.target.display.info
         screen = try MovieWriter(
-            url: plan.layout.screen, kind: .screen(codec: plan.codec, pixelSize: info.pixelSize, frameRate: plan.frameRate))
+            url: plan.layout.screen, kind: .video(codec: plan.codec, pixelSize: info.pixelSize, frameRate: plan.frameRate))
         if let microphone = plan.microphone {
             self.microphone = try MovieWriter(url: plan.layout.microphone, kind: .microphone(channels: microphone.channels))
+        }
+        if let resolved = plan.camera {
+            camera = try CameraTrackWriter(url: plan.layout.camera, codec: plan.codec, plan: resolved.plan)
+            let capture = try CameraCapture(
+                resolved, queue: queue,
+                onFrame: { [unowned self] buffer, clock in
+                    // Delivered on `queue`, the actor's executor, like screen frames.
+                    nonisolated(unsafe) let buffer = buffer
+                    assumeIsolated { $0.receiveCamera(buffer, clock: clock) }
+                },
+                onLost: { [weak self] message in
+                    guard let self else { return }
+                    Task { await self.cameraLost(message) }
+                })
+            // Started before the stream so the camera is warm by the first screen frame; its frames
+            // before that are dropped.
+            capture.start()
+            cameraCapture = capture
         }
 
         let configuration = SCStreamConfiguration()
@@ -124,6 +145,7 @@ actor CaptureSink {
                 throw .captureFailedToStart("stopCapture: \(error.localizedDescription)")
             }
         }
+        cameraCapture?.stop()
         guard let origin, let screen else { throw .noFramesDelivered }
         let endTime = max(end, origin)
         try await screen.finish(at: endTime)
@@ -134,6 +156,13 @@ actor CaptureSink {
                 report(.warning(.microphoneLost(at: endTime.duration(since: origin), error.description)))
             }
         }
+        if let camera {
+            do {
+                try await camera.finish(at: endTime)
+            } catch {
+                report(.warning(.cameraLost(at: endTime.duration(since: origin), error.description)))
+            }
+        }
         return endTime.duration(since: origin)
     }
 
@@ -141,7 +170,15 @@ actor CaptureSink {
         stopping = true
         heartbeat?.cancel()
         resolveFirstFrame(nil)
+        cameraCapture?.stop()
         if let stream { try? await stream.stopCapture() }
+    }
+
+    func cameraLost(_ message: String) {
+        guard !stopping, let camera, camera.lose() else { return }
+        let now = HostTime.now()
+        report(.warning(.cameraLost(at: origin.map { max(.zero, now.duration(since: $0)) } ?? .zero, message)))
+        cameraCapture?.stop()
     }
 
     func streamStopped(_ message: String) {
@@ -171,6 +208,7 @@ actor CaptureSink {
             do {
                 try screen.startSession(at: pts)
                 try microphone?.startSession(at: pts)
+                try camera?.start(at: pts)
             } catch {
                 report(.streamFailed(error.description))
                 return
@@ -204,6 +242,15 @@ actor CaptureSink {
         report(.warning(.framesDropped(count: droppedSinceReport)))
         droppedSinceReport = 0
         lastDropReport = now
+    }
+
+    private func receiveCamera(_ buffer: CMSampleBuffer, clock: CMClock?) {
+        guard !stopping, origin != nil, let camera, let (onHost, pts) = CameraClock.onHostClock(buffer, from: clock) else { return }
+        do {
+            _ = try camera.append(onHost, at: pts)
+        } catch {
+            cameraLost(error.description)
+        }
     }
 
     private func receiveMicrophone(_ buffer: CMSampleBuffer) {

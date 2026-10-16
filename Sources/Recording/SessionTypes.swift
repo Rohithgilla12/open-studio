@@ -50,6 +50,9 @@ public enum RecordingWarning: Sendable, Equatable {
     case microphoneLost(at: Duration, String)
     /// The system disabled the event tap and the recorder re-enabled it. Input in the gap is missing.
     case inputTapReenabled(at: Duration)
+    /// The camera track ends early: the device was unplugged, went away, or failed. Screen,
+    /// microphone, and events continue.
+    case cameraLost(at: Duration, String)
     case framesDropped(count: Int)
     /// A mid-take warning could not be saved to the manifest. The final manifest at stop still
     /// carries it, but a crash before then loses it.
@@ -66,6 +69,7 @@ public enum RecordingError: Error, Sendable, Equatable, CustomStringConvertible 
     /// The window closed, or left the screen, before recording started.
     case windowNotFound(CGWindowID)
     case microphoneNotFound(MicrophoneSelection)
+    case cameraNotFound(CameraSelection)
     case outputDirectoryUnwritable(URL, String)
     case captureFailedToStart(String)
     /// The stream started but no complete frame arrived within the start timeout.
@@ -86,6 +90,8 @@ public enum RecordingError: Error, Sendable, Equatable, CustomStringConvertible 
             return "window \(id) is not on screen"
         case .microphoneNotFound(let selection):
             return "microphone not found: \(selection)"
+        case .cameraNotFound(let selection):
+            return "camera not found: \(selection)"
         case .outputDirectoryUnwritable(let url, let detail):
             return "cannot write recording under \(url.path): \(detail)"
         case .captureFailedToStart(let detail):

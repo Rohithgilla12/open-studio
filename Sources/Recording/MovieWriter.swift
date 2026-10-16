@@ -9,7 +9,7 @@ import Foundation
 /// the D3 section of docs/design/accepted/rationale.md.
 final class MovieWriter {
     enum Kind {
-        case screen(codec: VideoCodec, pixelSize: CGSize, frameRate: Int)
+        case video(codec: VideoCodec, pixelSize: CGSize, frameRate: Int)
         case microphone(channels: Int)
     }
 
@@ -61,7 +61,7 @@ final class MovieWriter {
 extension MovieWriter.Kind {
     var outputSettings: (AVMediaType, [String: Any]) {
         switch self {
-        case .screen(let codec, let pixelSize, let frameRate):
+        case .video(let codec, let pixelSize, let frameRate):
             let codecType: AVVideoCodecType = switch codec {
             case .hevc: .hevc
             case .h264: .h264

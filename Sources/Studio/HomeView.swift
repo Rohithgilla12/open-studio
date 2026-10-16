@@ -139,6 +139,7 @@ extension Permission {
         case .screenRecording: "To capture the display."
         case .inputMonitoring: "To record clicks and keys, which drive the automatic zooms."
         case .microphone: "To record your voice with the take."
+        case .camera: "To show you in a corner of the take."
         }
     }
 }

@@ -11,12 +11,15 @@ public enum Permission: String, Sendable, CaseIterable, CustomStringConvertible 
     case inputMonitoring
     /// Required only when the configuration selects a microphone.
     case microphone
+    /// Required only when the configuration selects a camera.
+    case camera
 
     public var description: String {
         switch self {
         case .screenRecording: "Screen Recording"
         case .inputMonitoring: "Input Monitoring"
         case .microphone: "Microphone"
+        case .camera: "Camera"
         }
     }
 
@@ -26,6 +29,7 @@ public enum Permission: String, Sendable, CaseIterable, CustomStringConvertible 
         case .screenRecording: "Privacy_ScreenCapture"
         case .inputMonitoring: "Privacy_ListenEvent"
         case .microphone: "Privacy_Microphone"
+        case .camera: "Privacy_Camera"
         }
         return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!
     }
@@ -43,12 +47,14 @@ public struct PermissionReport: Sendable, Equatable {
     public let screenRecording: PermissionStatus
     public let inputMonitoring: PermissionStatus
     public let microphone: PermissionStatus
+    public let camera: PermissionStatus
 
     public func status(of permission: Permission) -> PermissionStatus {
         switch permission {
         case .screenRecording: screenRecording
         case .inputMonitoring: inputMonitoring
         case .microphone: microphone
+        case .camera: camera
         }
     }
 
@@ -57,6 +63,7 @@ public struct PermissionReport: Sendable, Equatable {
     public func missing(for configuration: RecordingConfiguration) -> [Permission] {
         var needed: [Permission] = [.screenRecording, .inputMonitoring]
         if configuration.microphone != .none { needed.append(.microphone) }
+        if configuration.camera != .none { needed.append(.camera) }
         return needed.filter { status(of: $0) != .granted }
     }
 }
@@ -67,7 +74,8 @@ public enum Permissions {
         PermissionReport(
             screenRecording: CGPreflightScreenCaptureAccess() ? .granted : .notDetermined,
             inputMonitoring: CGPreflightListenEventAccess() ? .granted : .notDetermined,
-            microphone: microphoneStatus())
+            microphone: captureStatus(for: .audio),
+            camera: captureStatus(for: .video))
     }
 
     /// Shows the system prompt when one is possible, otherwise returns the current status.
@@ -81,6 +89,8 @@ public enum Permissions {
             return CGRequestListenEventAccess() ? .granted : .denied
         case .microphone:
             return await AVCaptureDevice.requestAccess(for: .audio) ? .granted : .denied
+        case .camera:
+            return await AVCaptureDevice.requestAccess(for: .video) ? .granted : .denied
         }
     }
 
@@ -93,8 +103,8 @@ public enum Permissions {
         return "the terminal application that launched this process (TERM_PROGRAM=\(terminal))"
     }
 
-    private static func microphoneStatus() -> PermissionStatus {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    private static func captureStatus(for mediaType: AVMediaType) -> PermissionStatus {
+        switch AVCaptureDevice.authorizationStatus(for: mediaType) {
         case .authorized: .granted
         case .denied, .restricted: .denied
         case .notDetermined: .notDetermined

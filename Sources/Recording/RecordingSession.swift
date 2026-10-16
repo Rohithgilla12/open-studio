@@ -41,6 +41,7 @@ public actor RecordingSession {
         let target = try await CaptureSources.resolve(configuration.target)
         let display = target.display
         let microphone = try CaptureSources.resolve(configuration.microphone)
+        let camera = try CaptureSources.resolve(configuration.camera)
         let layout = try createDirectory(under: configuration.outputDirectory)
         guard let lock = try acquireLock(in: layout) else {
             try? FileManager.default.removeItem(at: layout.directory)
@@ -55,7 +56,7 @@ public actor RecordingSession {
         let capture = CaptureSink(
             plan: CaptureSink.Plan(
                 target: target, codec: configuration.codec, frameRate: frameRate,
-                microphone: microphone.map { ($0.uniqueID, $0.channelCount) }, layout: layout),
+                microphone: microphone.map { ($0.uniqueID, $0.channelCount) }, camera: camera, layout: layout),
             eventsWritten: { inlet.eventsWritten }, report: inlet.send)
 
         do {
@@ -82,6 +83,11 @@ public actor RecordingSession {
                 area: target.pixelArea.map(WireRect.init),
                 microphone: microphone.map {
                     WireMicrophone(deviceName: $0.localizedName, sampleRate: 48_000, channelCount: $0.channelCount)
+                },
+                camera: camera.map {
+                    WireCamera(
+                        deviceName: $0.device.localizedName, pixelWidth: $0.plan.width, pixelHeight: $0.plan.height,
+                        frameRate: Int($0.plan.frameRate.rounded()))
                 })
             try manifest.write(to: layout)
             let session = RecordingSession(
@@ -156,6 +162,7 @@ public actor RecordingSession {
         let wire: ManifestWarning? = switch warning {
         case .microphoneLost(let at, let message): .microphoneLost(at: MediaTime(at), message: message)
         case .inputTapReenabled(let at): .inputTapReenabled(at: MediaTime(at))
+        case .cameraLost(let at, let message): .cameraLost(at: MediaTime(at), message: message)
         case .framesDropped, .manifestWriteFailed: nil
         }
         guard let wire else { return }

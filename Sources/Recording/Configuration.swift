@@ -8,6 +8,8 @@ import ScreenCaptureKit
 public struct RecordingConfiguration: Sendable, Equatable {
     public var target: CaptureTarget
     public var microphone: MicrophoneSelection
+    /// Recorded to its own movie beside the screen, at most 1920 x 1080 and 30 fps.
+    public var camera: CameraSelection
     /// Parent directory. The session creates `YYYYMMDD-HHMMSS.osrec` inside it.
     public var outputDirectory: URL
     /// Capped at the display's refresh rate.
@@ -20,6 +22,7 @@ public struct RecordingConfiguration: Sendable, Equatable {
         outputDirectory: URL,
         target: CaptureTarget = .display(.main),
         microphone: MicrophoneSelection = .none,
+        camera: CameraSelection = .none,
         maxFrameRate: Int = 60,
         codec: VideoCodec = .hevc,
         maxDuration: Duration? = nil
@@ -27,6 +30,7 @@ public struct RecordingConfiguration: Sendable, Equatable {
         self.outputDirectory = outputDirectory
         self.target = target
         self.microphone = microphone
+        self.camera = camera
         self.maxFrameRate = maxFrameRate
         self.codec = codec
         self.maxDuration = maxDuration
@@ -63,6 +67,15 @@ public enum MicrophoneSelection: Sendable, Hashable {
     case device(uniqueID: String)
 }
 
+public enum CameraSelection: Sendable, Hashable {
+    case none
+    /// `AVCaptureDevice.systemPreferredCamera`, which follows the person's choice in Control Centre
+    /// and Continuity Camera's automatic switching, when it is one `CaptureSources.cameras()` lists.
+    case systemDefault
+    /// `AVCaptureDevice.uniqueID`.
+    case device(uniqueID: String)
+}
+
 public enum VideoCodec: String, Sendable, Equatable, CaseIterable {
     case hevc
     case h264
@@ -83,6 +96,13 @@ public struct DisplayInfo: Sendable, Equatable, Identifiable {
 public struct MicrophoneInfo: Sendable, Equatable, Identifiable {
     public let id: String
     public let name: String
+    public let isDefault: Bool
+}
+
+public struct CameraInfo: Sendable, Equatable, Identifiable {
+    public let id: String
+    public let name: String
+    /// The camera `CameraSelection.systemDefault` resolves to now.
     public let isDefault: Bool
 }
 
@@ -159,6 +179,53 @@ public enum CaptureSources {
     public static func microphones() -> [MicrophoneInfo] {
         let defaultID = AVCaptureDevice.default(for: .audio)?.uniqueID
         return audioDevices().map { MicrophoneInfo(id: $0.uniqueID, name: $0.localizedName, isDefault: $0.uniqueID == defaultID) }
+    }
+
+    /// Built-in, USB, and Continuity cameras. Desk View is never listed: it is a cut-out of another
+    /// camera pointed at the desk, not a picture of the person.
+    ///
+    /// Lists devices without opening one, so it needs no Camera permission and lights no camera.
+    public static func cameras() -> [CameraInfo] {
+        let devices = videoDevices()
+        let preferred = preferredCamera(among: devices)?.uniqueID
+        return devices.map { CameraInfo(id: $0.uniqueID, name: $0.localizedName, isDefault: $0.uniqueID == preferred) }
+    }
+
+    /// Without `NSCameraUseContinuityCameraDeviceType` in the bundle, as for `osrec`, a Continuity
+    /// Camera reports itself as a built-in wide-angle camera, so both types are listed.
+    static let cameraDeviceTypes: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .continuityCamera, .external]
+
+    private static func videoDevices() -> [AVCaptureDevice] {
+        AVCaptureDevice.DiscoverySession(deviceTypes: cameraDeviceTypes, mediaType: .video, position: .unspecified).devices
+    }
+
+    private static func preferredCamera(among devices: [AVCaptureDevice]) -> AVCaptureDevice? {
+        let preferred = AVCaptureDevice.systemPreferredCamera?.uniqueID
+        return devices.first { $0.uniqueID == preferred } ?? devices.first
+    }
+
+    static func resolve(_ selection: CameraSelection) throws(RecordingError) -> ResolvedCamera? {
+        let device: AVCaptureDevice
+        switch selection {
+        case .none:
+            return nil
+        case .systemDefault:
+            guard let preferred = preferredCamera(among: videoDevices()) else { throw .cameraNotFound(selection) }
+            device = preferred
+        case .device(let uniqueID):
+            guard let found = videoDevices().first(where: { $0.uniqueID == uniqueID }) else { throw .cameraNotFound(selection) }
+            device = found
+        }
+        let formats = device.formats.map { format in
+            let dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+            return CameraFormat.Candidate(
+                width: Int(dimensions.width), height: Int(dimensions.height),
+                maxFrameRate: format.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 0)
+        }
+        guard let plan = CameraFormat.plan(for: formats) else {
+            throw .captureFailedToStart("\(device.localizedName) offers no video format")
+        }
+        return ResolvedCamera(device: device, format: device.formats[plan.formatIndex], plan: plan)
     }
 
     static func resolve(_ target: CaptureTarget) async throws(RecordingError) -> ResolvedTarget {
@@ -256,6 +323,14 @@ public enum CaptureSources {
 struct ResolvedDisplay: @unchecked Sendable {
     let display: SCDisplay
     let info: DisplayInfo
+}
+
+/// `AVCaptureDevice` carries no Sendable annotation. It is configured once, on the session's
+/// start path, and otherwise only read.
+struct ResolvedCamera: @unchecked Sendable {
+    let device: AVCaptureDevice
+    let format: AVCaptureDevice.Format
+    let plan: CameraFormat.Plan
 }
 
 /// The ScreenCaptureKit objects are held only to build the filter, like `ResolvedDisplay`'s.

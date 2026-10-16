@@ -56,6 +56,9 @@ extension RecordingSession {
         if hasMicrophone, case .failure(let detail) = await Recovery.probeDuration(of: layout.microphone) {
             notes.append("microphone.mov unreadable: \(detail)")
         }
+        if manifest.camera != nil, case .failure(let detail) = await Recovery.probeDuration(of: layout.camera) {
+            notes.append("camera.mov unreadable: \(detail)")
+        }
 
         let message = (["recorder exited without finalizing"] + notes).joined(separator: "; ")
         manifest.status = .finalized(duration: MediaTime(duration), termination: .recovered(message: message))
