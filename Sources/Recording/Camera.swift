@@ -166,6 +166,7 @@ final class CameraTrackWriter {
 final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
     private let session = AVCaptureSession()
     private let output = AVCaptureVideoDataOutput()
+    private let control = DispatchQueue(label: "open-studio.camera")
     private let onFrame: (CMSampleBuffer, CMClock?) -> Void
     private var observers: [any NSObjectProtocol] = []
 
@@ -225,12 +226,16 @@ final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     }
 
     /// Blocks until the camera runs, which can take a few hundred milliseconds.
-    func start() { session.startRunning() }
+    func start() { control.sync { session.startRunning() } }
 
+    /// Returns at once. `stopRunning` blocks until the session has stopped, and the caller is the
+    /// queue that frames are delivered on, so waiting there could wait on its own frames.
     func stop() {
-        for observer in observers { NotificationCenter.default.removeObserver(observer) }
-        observers = []
-        if session.isRunning { session.stopRunning() }
+        control.async { [self] in
+            for observer in observers { NotificationCenter.default.removeObserver(observer) }
+            observers = []
+            if session.isRunning { session.stopRunning() }
+        }
     }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
