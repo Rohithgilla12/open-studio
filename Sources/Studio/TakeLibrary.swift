@@ -75,12 +75,10 @@ enum TakeLibrary {
     }
 }
 
-/// What Record captures. The raw values are what `UserDefaults` stores and what the
-/// `-CaptureTarget` launch argument names.
 public enum CaptureKind: String, Sendable, CaseIterable, Identifiable {
-    case screen
-    case area
-    case window
+    case screen = "screen"
+    case area = "area"
+    case window = "window"
 
     public var id: Self { self }
 
@@ -97,8 +95,7 @@ public struct RecordingPreferences: Sendable, Equatable {
     public var display: DisplaySelection
     public var microphone: MicrophoneSelection
     public var captureKind: CaptureKind
-    /// The last area chosen on each display, in display points, origin top-left. A window is not
-    /// remembered, because its id dies with the window.
+    /// The last area chosen on each display, in display points, origin top-left.
     public var areas: [CGDirectDisplayID: CGRect]
 
     public init(
@@ -159,7 +156,6 @@ public struct RecordingPreferences: Sendable, Equatable {
 }
 
 extension DisplaySelection {
-    /// `.main` is the display with the menu bar now, as `RecordingSession.start` resolves it.
     var resolvedID: CGDirectDisplayID {
         switch self {
         case .main: CGMainDisplayID()
@@ -169,8 +165,6 @@ extension DisplaySelection {
 }
 
 extension CGRect {
-    /// `[x, y, width, height]`, as preferences store an area and `-SelectArea` spells one. Refuses
-    /// anything that is not four finite numbers with a positive size.
     init?(components: [Double]) {
         guard components.count == 4, components.allSatisfy(\.isFinite), components[2] > 0, components[3] > 0 else { return nil }
         self.init(x: components[0], y: components[1], width: components[2], height: components[3])

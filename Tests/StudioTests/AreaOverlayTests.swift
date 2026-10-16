@@ -4,9 +4,7 @@ import Testing
 
 struct DisplaySpaceSpec {
     let main = CGRect(x: 0, y: 0, width: 1512, height: 982)
-    /// To the right of the main display and 200 points lower.
-    let right = CGRect(x: 1512, y: -200, width: 1920, height: 1080)
-    /// To the left of the main display and above it.
+    let rightAndLower = CGRect(x: 1512, y: -200, width: 1920, height: 1080)
     let leftAbove = CGRect(x: -1920, y: 982, width: 1920, height: 1080)
 
     @Test func theMainDisplayFlipsY() {
@@ -17,9 +15,9 @@ struct DisplaySpaceSpec {
     }
 
     @Test func aSecondaryDisplayIsMeasuredFromItsOwnTopLeft() {
-        #expect(DisplaySpace.displayPoint(fromScreen: CGPoint(x: 1612, y: 830), screenFrame: right) == CGPoint(x: 100, y: 50))
+        #expect(DisplaySpace.displayPoint(fromScreen: CGPoint(x: 1612, y: 830), screenFrame: rightAndLower) == CGPoint(x: 100, y: 50))
         #expect(
-            DisplaySpace.screenRect(fromDisplay: CGRect(x: 100, y: 50, width: 400, height: 300), screenFrame: right)
+            DisplaySpace.screenRect(fromDisplay: CGRect(x: 100, y: 50, width: 400, height: 300), screenFrame: rightAndLower)
                 == CGRect(x: 1612, y: 530, width: 400, height: 300))
         #expect(DisplaySpace.displayPoint(fromScreen: CGPoint(x: -1920, y: 2062), screenFrame: leftAbove) == .zero)
         #expect(

@@ -20,9 +20,7 @@ enum DisplaySpace {
     }
 }
 
-/// The selection on one display, in display points, origin top-left. Every result stays on the display.
 struct AreaEditor {
-    /// Display points grow downward, so a top handle moves the selection's `minY`.
     enum Handle: CaseIterable {
         case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
 
@@ -64,7 +62,6 @@ struct AreaEditor {
     }
 
     static let handleReach: CGFloat = 8
-    /// A drag shorter than this on either axis is a click, and keeps the selection it started on.
     static let smallestDrawn: CGFloat = 4
 
     let displaySize: CGSize
@@ -142,8 +139,6 @@ struct AreaEditor {
         pixelSize(scale: scale).map(Self.isLargeEnough) ?? false
     }
 
-    /// Whole pixels, rounded down. The recorder grows an area outward to whole pixels, so it records
-    /// at least this, and a size this function calls large enough cannot fail `areaTooSmall`.
     static func pixelSize(of area: CGRect, scale: CGFloat) -> CGSize {
         CGSize(width: (area.width * scale + 1e-6).rounded(.down), height: (area.height * scale + 1e-6).rounded(.down))
     }
@@ -158,8 +153,6 @@ struct AreaEditor {
     }
 }
 
-/// Sizes on Home and in the overlay are in screen pixels, the unit the 64 pixel minimum and the
-/// exported canvas are measured in.
 struct PixelSize: CustomStringConvertible {
     let pixels: CGSize
 

@@ -56,7 +56,6 @@ public final class StudioModel {
         URL.moviesDirectory.appending(path: "open-studio", directoryHint: .isDirectory)
     }
 
-    /// nil until there is something to record: an area on the chosen display, or a chosen window.
     public var captureTarget: CaptureTarget? {
         switch preferences.captureKind {
         case .screen: .display(preferences.display)
@@ -69,7 +68,6 @@ public final class StudioModel {
         captureTarget.map { RecordingConfiguration(outputDirectory: library, target: $0, microphone: preferences.microphone) }
     }
 
-    /// Only the microphone changes which permissions a take needs, so this does not wait for a target.
     public var missingPermissions: [Permission] {
         permissions.missing(for: RecordingConfiguration(outputDirectory: library, microphone: preferences.microphone))
     }
@@ -81,7 +79,6 @@ public final class StudioModel {
         case needsPermissions
     }
 
-    /// Area is ready without a remembered area, because Record opens the selection overlay first.
     public var readiness: Readiness {
         switch phase {
         case .home, .editing: break
@@ -174,13 +171,11 @@ public final class StudioModel {
         }
     }
 
-    /// What the Record button and New Recording do: Area asks for the area first, the others start.
     public func record() async {
         guard preferences.captureKind == .area else { return await startRecording() }
         await selectAreaThenRecord(preset: preferences.area(on: preferences.display))
     }
 
-    /// Confirming saves the area for the chosen display and records it; cancelling changes nothing.
     public func selectAreaThenRecord(preset: CGRect?) async {
         guard readiness != .busy else { return }
         let display = preferences.display
@@ -198,7 +193,7 @@ public final class StudioModel {
         }
     }
 
-    public func startRecording() async {
+    func startRecording() async {
         guard let configuration else { return }
         let previous: Editor?
         switch phase {
