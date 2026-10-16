@@ -52,7 +52,13 @@ public struct RecordingLayout: Sendable, Hashable {
 /// Additive changes (a new event type, a new optional manifest key) keep the version, because
 /// readers ignore event types and keys they do not know. A change to the meaning of an existing
 /// field bumps the version, and readers refuse versions newer than `current`.
+///
+/// A manifest is written with the lowest version that can express it, so a take that uses nothing
+/// newer stays readable by older builds.
 public enum FormatVersion {
-    public static let current = 1
+    public static let current = 2
+    /// Added `area`. An older reader would ignore the key and show the whole display, including what
+    /// the person cropped out, so the key needs a version an older reader refuses.
+    static let area = 2
     public static let identifier = "open-studio.recording"
 }

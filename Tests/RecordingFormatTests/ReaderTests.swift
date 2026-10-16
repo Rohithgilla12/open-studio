@@ -138,11 +138,13 @@ final class ReaderTests {
     }
 
     @Test func newerVersionDirectoryIsRejected() throws {
-        let newer = try Fixtures.editJSON(Fixtures.manifest().encoded()) { $0["formatVersion"] = 2 }
+        let found = FormatVersion.current + 1
+        let newer = try Fixtures.editJSON(Fixtures.manifest().encoded()) { $0["formatVersion"] = found }
         try newer.write(to: layout.manifest)
 
-        #expect(throws: FormatError.unsupportedVersion(found: 2, supported: 1)) { try RecordingReader.read(at: directory) }
-        #expect(throws: FormatError.unsupportedVersion(found: 2, supported: 1)) { try RecordingReader.health(at: directory) }
+        let refusal = FormatError.unsupportedVersion(found: found, supported: FormatVersion.current)
+        #expect(throws: refusal) { try RecordingReader.read(at: directory) }
+        #expect(throws: refusal) { try RecordingReader.health(at: directory) }
     }
 
     @Test func aFileIsNotARecordingDirectory() throws {

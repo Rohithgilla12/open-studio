@@ -75,9 +75,10 @@ struct LoadSpec {
         let directory = try Fixture.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         var generated = try Fixture.generate()
-        generated.manifest = try Fixture.editJSON(generated.manifest) { $0["formatVersion"] = 2 }
+        let found = FormatVersion.current + 1
+        generated.manifest = try Fixture.editJSON(generated.manifest) { $0["formatVersion"] = found }
         try Fixture.write(generated, to: directory)
-        #expect(throws: SourceLoadError.unsupportedVersion(found: 2, supported: 1)) {
+        #expect(throws: SourceLoadError.unsupportedVersion(found: found, supported: FormatVersion.current)) {
             try SourceRecording.load(from: directory)
         }
     }

@@ -17,6 +17,10 @@ public struct WireManifest: Sendable, Equatable {
     public var clock: WireClock
     public var display: WireDisplay
     public var screen: WireScreen
+    /// The part of the screen video the take shows, in screen video pixels. nil means the whole
+    /// frame. The movie and every event still cover the whole display, so the area can be changed
+    /// later without re-recording.
+    public var area: WireRect?
     public var microphone: WireMicrophone?
     /// Degradations that did not end the take. Written when they happen, so they survive a crash.
     public var warnings: [ManifestWarning]
@@ -24,7 +28,7 @@ public struct WireManifest: Sendable, Equatable {
 
     public init(
         id: RecordingID, createdAt: Date, recorder: WireRecorderInfo, clock: WireClock,
-        display: WireDisplay, screen: WireScreen, microphone: WireMicrophone?,
+        display: WireDisplay, screen: WireScreen, area: WireRect? = nil, microphone: WireMicrophone?,
         warnings: [ManifestWarning] = [], status: ManifestStatus = .recording
     ) {
         self.id = id
@@ -33,10 +37,13 @@ public struct WireManifest: Sendable, Equatable {
         self.clock = clock
         self.display = display
         self.screen = screen
+        self.area = area
         self.microphone = microphone
         self.warnings = warnings
         self.status = status
     }
+
+    var formatVersion: Int { area == nil ? 1 : FormatVersion.area }
 }
 
 public enum ManifestStatus: Sendable, Equatable {
@@ -192,7 +199,7 @@ extension WireManifest {
 }
 
 private enum ManifestKey: String, CodingKey {
-    case format, formatVersion, id, createdAt, recorder, clock, display, screen, microphone, warnings
+    case format, formatVersion, id, createdAt, recorder, clock, display, screen, area, microphone, warnings
     case status, durationMicros, termination
 }
 
@@ -285,6 +292,7 @@ extension WireManifest: Codable {
             clock: WireClock(originHostTimeNanos: try clock.decode(UInt64.self, forKey: .originHostTimeNanos)),
             display: try c.decode(WireDisplay.self, forKey: .display),
             screen: try c.decode(WireScreen.self, forKey: .screen),
+            area: version >= FormatVersion.area ? try c.decodeIfPresent(WireRect.self, forKey: .area) : nil,
             microphone: try c.decodeIfPresent(WireMicrophone.self, forKey: .microphone),
             warnings: try c.decodeIfPresent([TolerantWarning].self, forKey: .warnings)?.compactMap(\.warning) ?? [],
             status: status)
@@ -293,7 +301,7 @@ extension WireManifest: Codable {
     public func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: ManifestKey.self)
         try c.encode(FormatVersion.identifier, forKey: .format)
-        try c.encode(FormatVersion.current, forKey: .formatVersion)
+        try c.encode(formatVersion, forKey: .formatVersion)
         try c.encode(id, forKey: .id)
         try c.encode(MillisecondTimestamp.format(createdAt), forKey: .createdAt)
         try c.encode(recorder, forKey: .recorder)
@@ -303,6 +311,7 @@ extension WireManifest: Codable {
         try clockContainer.encode(clock.originHostTimeNanos, forKey: .originHostTimeNanos)
         try c.encode(display, forKey: .display)
         try c.encode(screen, forKey: .screen)
+        try c.encodeIfPresent(area, forKey: .area)
         try c.encodeIfPresent(microphone, forKey: .microphone)
         try c.encode(warnings, forKey: .warnings)
         switch status {

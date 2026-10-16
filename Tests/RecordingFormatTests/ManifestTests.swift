@@ -107,10 +107,36 @@ struct ManifestTests {
 
     @Test func newerVersionIsRejectedBeforeItsShapeIsRead() throws {
         let newer = try JSONSerialization.data(withJSONObject: [
-            "format": "open-studio.recording", "formatVersion": 2, "timeline": ["clock": "nanoseconds"],
+            "format": "open-studio.recording", "formatVersion": FormatVersion.current + 1, "timeline": ["clock": "nanoseconds"],
         ])
 
-        #expect(throws: FormatError.unsupportedVersion(found: 2, supported: 1)) { try WireManifest.decode(newer) }
+        #expect(throws: FormatError.unsupportedVersion(found: FormatVersion.current + 1, supported: FormatVersion.current)) {
+            try WireManifest.decode(newer)
+        }
+    }
+
+    @Test func anAreaRoundTripsAsVersion2() throws {
+        var manifest = Fixtures.manifest()
+        manifest.area = WireRect(x: 200, y: 160, width: 2560, height: 1440)
+
+        let json = try JSONSerialization.jsonObject(with: manifest.encoded()) as! [String: Any]
+
+        #expect(json["formatVersion"] as? Int == 2)
+        #expect(json["area"] as? [Double] == [200, 160, 2560, 1440])
+        #expect(try WireManifest.decode(manifest.encoded()) == manifest)
+    }
+
+    @Test func aManifestWithoutAnAreaStaysVersion1() throws {
+        let json = try JSONSerialization.jsonObject(with: Fixtures.manifest().encoded()) as! [String: Any]
+
+        #expect(json["formatVersion"] as? Int == 1)
+        #expect(json["area"] == nil)
+    }
+
+    @Test func version1MeansTheWholeFrameEvenWithAnAreaKey() throws {
+        let data = try Fixtures.editJSON(Fixtures.manifest().encoded()) { $0["area"] = [10, 10, 100, 100] }
+
+        #expect(try WireManifest.decode(data).area == nil)
     }
 
     @Test func otherFormatIsRejected() throws {
