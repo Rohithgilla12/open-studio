@@ -70,3 +70,14 @@ cp -R <take>.osrec /tmp/camera-take.osrec
 ```
 
 Not an experiment but a fixture maker, added in D9. It writes a generated `camera.mov` (1920 x 1080 at 30 fps by default, HEVC) into a take, and adds the camera key and format version 3 to its manifest, as the recorder writes them. The picture changes colour every 2 s, shows the recording time in large digits and a bar that sweeps once a second, and has a different left and right half, so mirroring shows. It writes into the take it is given, so give it a copy. The D9 export measurement and the editor screenshot used it, so neither needed a real camera.
+
+## Synthetic audio
+
+```
+swiftc -O Experiments/synthetic-audio/main.swift -o /tmp/synthetic-audio
+cp -R <take>.osrec /tmp/audio-take.osrec
+/tmp/synthetic-audio /tmp/audio-take.osrec system-audio [frequency-hz] [from-seconds]
+/tmp/synthetic-audio /tmp/audio-take.osrec microphone [frequency-hz] [from-seconds]
+```
+
+A fixture maker, added in D10. It writes a generated `system-audio.mov` (48 kHz stereo AAC, 1 kHz by default) or `microphone.mov` (mono, 440 Hz by default) into a take, as the recorder writes them, and adds the source to the manifest (format version 4 for system audio). The tone starts at the given time and pulses on for the first half of every second, so its sync against the screen can be checked by ear or by measurement. It writes into the take it is given, so give it a copy. The D10 export measurement and the editor screenshot used it, so neither needed a real recording.

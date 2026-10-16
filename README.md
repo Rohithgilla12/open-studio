@@ -4,7 +4,7 @@ A native macOS screen recorder that zooms in on your clicks. Written in Swift, w
 
 This repository has the recording, timeline, and rendering core, a command-line harness, and a first editor app.
 
-- **Recording** captures one display, an area of it, or one window with ScreenCaptureKit, and hides the cursor from the video. It also records input events, cursor images, and optionally the microphone and a camera. A crash or force-quit keeps everything written up to the last second.
+- **Recording** captures one display, an area of it, or one window with ScreenCaptureKit, and hides the cursor from the video. It also records input events, cursor images, and optionally the microphone, what the Mac plays, and a camera. A crash or force-quit keeps everything written up to the last second.
 - **Timeline** reads a recording and works out the automatic zooms from your clicks. It then gives the camera position, zoom, and cursor state for any frame. Its answers are pure functions of time, so a renderer can ask from any thread in any order and get identical results.
 - **Render** draws each output frame: the screen zoomed to the camera, the cursor redrawn on top, a background with padding, rounded corners, and a shadow, and the recorded camera in a corner. Preview, export, and stills share one compositor, so they produce the same pixels.
 - **osrec** is a command-line harness that drives these modules from a terminal.
@@ -77,6 +77,16 @@ Without `--display`, `osrec` records the main display. Auto-zoom only reacts to 
 
 The camera goes to its own `camera.mov`, at most 1920 x 1080 and 30 fps, on the same clock as the screen. Built-in, USB, and Continuity cameras are listed; Desk View is not. If the camera is unplugged mid-take, its track ends there with a warning and the screen keeps recording. The export draws the camera in a corner, a circle by default and mirrored. In the app, choose the camera on Home, and set its corner, size, shape, and mirroring in the editor's Camera section.
 
+### Record system audio
+
+```sh
+.build/release/osrec record --duration 5 --system-audio                 # what the Mac plays
+.build/release/osrec record --duration 5 --system-audio --mic default   # with your voice
+.build/release/osrec export <dir>.osrec --out demo.mp4 --mute-mic       # or --mute-system
+```
+
+System audio goes to its own `system-audio.mov`, 48 kHz stereo AAC, on the same clock as the screen. The recorder's own sound is left out. It needs no permission beyond Screen Recording. The export mixes the microphone and system audio into one AAC track at the levels in `project.json`, both at full volume by default. In the app, turn on System audio on Home, and set each source's level and mute in the editor's Audio section.
+
 ### Record an area or a window
 
 ```sh
@@ -104,14 +114,15 @@ A take is a `.osrec` directory:
 recording.json     manifest, replaced atomically; the commit point; holds the area for area and window takes
 screen.mov         fragmented QuickTime, 1 s fragments
 microphone.mov     fragmented QuickTime, only when recorded with --mic
+system-audio.mov   fragmented QuickTime, only when recorded with --system-audio
 camera.mov         fragmented QuickTime, only when recorded with --camera
 events.ndjson      append-only input and cursor events
 cursors/<id>.png   cursor images, named by content hash
 .lock              held while recording
-project.json       edits (zooms, style, output format), written by the editor; the recorder never touches it
+project.json       edits (zooms, style, audio levels, output format), written by the editor; the recorder never touches it
 ```
 
-Every timestamp is in integer microseconds from the first complete video frame. Positions are in screen-video pixels, including the area. A manifest with a camera is format version 3, and one with an area but no camera is version 2. One with neither is still written as version 1, so older builds can read it. [`recording-directory-example.md`](docs/design/accepted/recording-directory-example.md) shows a full example.
+Every timestamp is in integer microseconds from the first complete video frame. Positions are in screen-video pixels, including the area. A manifest with system audio is format version 4, one with a camera but no system audio is version 3, and one with only an area is version 2. One with none of them is still written as version 1, so older builds can read it. [`recording-directory-example.md`](docs/design/accepted/recording-directory-example.md) shows a full example.
 
 ## Layout
 
@@ -127,7 +138,7 @@ docs/design/              brief, accepted design and rationale, rejected candida
 
 ## Design
 
-[`docs/design/accepted/rationale.md`](docs/design/accepted/rationale.md) explains the main decisions. [`docs/design/capture-targets/rationale.md`](docs/design/capture-targets/rationale.md) explains areas and windows, and [`docs/design/camera/rationale.md`](docs/design/camera/rationale.md) explains the camera. These include running capture in-process instead of in a helper, using fragmented `.mov` for crash safety, and solving springs exactly instead of replaying them. The same document records what the experiments measured.
+[`docs/design/accepted/rationale.md`](docs/design/accepted/rationale.md) explains the main decisions. [`docs/design/capture-targets/rationale.md`](docs/design/capture-targets/rationale.md) explains areas and windows, [`docs/design/camera/rationale.md`](docs/design/camera/rationale.md) explains the camera, and [`docs/design/system-audio/rationale.md`](docs/design/system-audio/rationale.md) explains system audio and the mix. These include running capture in-process instead of in a helper, using fragmented `.mov` for crash safety, and solving springs exactly instead of replaying them. The same document records what the experiments measured.
 
 ## Licence
 
