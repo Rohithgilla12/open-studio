@@ -22,6 +22,9 @@ private final class LockHolder {
     }
 }
 
+// Serialized because spawning a child copies every descriptor until exec closes the CLOEXEC ones,
+// so a lock released during another test's spawn stays held for that instant.
+@Suite(.serialized)
 final class ReaderTests {
     let directory: URL
     let layout: RecordingLayout
