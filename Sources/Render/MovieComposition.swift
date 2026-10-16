@@ -15,7 +15,7 @@ struct MovieComposition: @unchecked Sendable {
     /// nil when the take has no microphone, or its movie could not be read (see `warnings`).
     let audioTrackID: CMPersistentTrackID?
     /// nil when the take has no camera, or its movie could not be read (see `warnings`).
-    let cameraTrackID: CMPersistentTrackID?
+    let camera: CameraFootage?
     let duration: CMTime
     let warnings: [String]
 
@@ -61,36 +61,43 @@ struct MovieComposition: @unchecked Sendable {
             }
         }
 
-        var cameraTrackID: CMPersistentTrackID?
+        var camera: CameraFootage?
         if let url = source.cameraMovie {
             do {
-                let camera = AVURLAsset(url: url)
-                guard let video = try await camera.loadTracks(withMediaType: .video).first,
+                let movie = AVURLAsset(url: url)
+                if let video = try await movie.loadTracks(withMediaType: .video).first,
                     let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
-                else {
-                    throw RenderError.screenMovieUnreadable("no video track")
+                {
+                    // The camera's own edit list carries a late start, so inserting from 0 keeps it aligned.
+                    let available = min(try await movie.load(.duration), duration)
+                    try track.insertTimeRange(CMTimeRange(start: .zero, duration: available), of: video, at: .zero)
+                    camera = CameraFootage(trackID: track.trackID, end: available)
+                } else {
+                    warnings.append("camera.mov has no video track; exporting without the camera")
                 }
-                // The camera's own edit list carries a late start, so inserting from 0 keeps it aligned.
-                let available = min(try await camera.load(.duration), duration)
-                try track.insertTimeRange(CMTimeRange(start: .zero, duration: available), of: video, at: .zero)
-                cameraTrackID = track.trackID
             } catch {
                 warnings.append("camera.mov is unreadable (\(error.localizedDescription)); exporting without the camera")
             }
         }
         return MovieComposition(
             asset: composition.copy() as! AVComposition, screenTrackID: screenTrack.trackID, audioTrackID: audioTrackID,
-            cameraTrackID: cameraTrackID, duration: duration, warnings: warnings)
+            camera: camera, duration: duration, warnings: warnings)
     }
 
-    /// The camera track, when the scene draws it. A hidden overlay leaves it out of the request, so
+    struct CameraFootage: Sendable {
+        let trackID: CMPersistentTrackID
+        /// Where the camera's media ends, which is earlier than the take's for a lost camera.
+        let end: CMTime
+    }
+
+    /// The camera, when the scene draws it. A hidden overlay leaves it out of the request, so
     /// AVFoundation never decodes it.
-    func cameraTrackID(for scene: RenderScene) -> CMPersistentTrackID? {
-        scene.cameraOverlay == nil ? nil : cameraTrackID
+    func camera(for scene: RenderScene) -> CameraFootage? {
+        scene.cameraOverlay == nil ? nil : camera
     }
 
     func videoTracks(for scene: RenderScene) -> [AVAssetTrack] {
-        let wanted = [screenTrackID] + (cameraTrackID(for: scene).map { [$0] } ?? [])
+        let wanted = [screenTrackID] + (camera(for: scene).map { [$0.trackID] } ?? [])
         return wanted.compactMap { id in asset.tracks.first { $0.trackID == id } }
     }
 
@@ -109,11 +116,22 @@ struct MovieComposition: @unchecked Sendable {
         composition.colorPrimaries = AVVideoColorPrimaries_ITU_R_709_2
         composition.colorTransferFunction = AVVideoTransferFunction_ITU_R_709_2
         composition.colorYCbCrMatrix = AVVideoYCbCrMatrix_ITU_R_709_2
-        composition.instructions = [
-            SceneInstruction(
-                timeRange: CMTimeRange(start: .zero, duration: duration), screenTrackID: screenTrackID,
-                cameraTrackID: cameraTrackID(for: scene), scene: scene)
-        ]
+        composition.instructions = instructionRanges(for: scene).map { range, cameraTrackID in
+            SceneInstruction(timeRange: range, screenTrackID: screenTrackID, cameraTrackID: cameraTrackID, scene: scene)
+        }
         return composition
+    }
+
+    /// The camera track is required only while it has media. Past its end the export's reader
+    /// keeps handing over the last camera frame (measured by the D9 review), where a still gets
+    /// none, so the camera's range and the rest get separate instructions.
+    private func instructionRanges(for scene: RenderScene) -> [(CMTimeRange, CMPersistentTrackID?)] {
+        let whole = CMTimeRange(start: .zero, duration: duration)
+        guard let camera = camera(for: scene), camera.end > .zero else { return [(whole, nil)] }
+        guard camera.end < duration else { return [(whole, camera.trackID)] }
+        return [
+            (CMTimeRange(start: .zero, end: camera.end), camera.trackID),
+            (CMTimeRange(start: camera.end, end: duration), nil),
+        ]
     }
 }

@@ -159,6 +159,26 @@ struct CameraPixelSpec {
         #expect(isRed(late[1753, 913]), "after the camera's track ends \(late[1753, 913])")
     }
 
+    @Test func theExportDrawsNoOverlayWhereTheCameraHasNoMedia() async throws {
+        let take = try await cameraTake(Fixture.Camera(before: (Self.yellow, Self.cyan), after: (Self.yellow, Self.cyan), from: 0.5, until: 1.5))
+        let destination = FileManager.default.temporaryDirectory.appending(path: "camera-\(UUID().uuidString).mp4")
+        defer {
+            try? FileManager.default.removeItem(at: take)
+            try? FileManager.default.removeItem(at: destination)
+        }
+        _ = try await Export.run(try project(take), to: destination)
+
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: destination))
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        let early = Pixels(try await generator.image(at: CMTime(value: 15, timescale: 60)).image)
+        let during = Pixels(try await generator.image(at: CMTime(value: 45, timescale: 60)).image)
+        let late = Pixels(try await generator.image(at: CMTime(value: 105, timescale: 60)).image)
+        #expect(isRed(early[1753, 913]), "before the camera's first frame \(early[1753, 913])")
+        #expect(isCyan(during[1693, 913]), "while the camera runs \(during[1693, 913])")
+        #expect(isRed(late[1753, 913]), "after the camera's track ends, no frozen frame \(late[1753, 913])")
+    }
+
     @Test func theExportShowsTheNewPictureJustAfterTheChange() async throws {
         let take = try await cameraTake()
         let destination = FileManager.default.temporaryDirectory.appending(path: "camera-\(UUID().uuidString).mp4")
