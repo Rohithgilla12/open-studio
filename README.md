@@ -4,11 +4,11 @@ A native macOS screen recorder that zooms in on your clicks. Written in Swift, w
 
 This repository has the recording, timeline, and rendering core, a command-line harness, and a first editor app.
 
-- **Recording** captures one display with ScreenCaptureKit and hides the cursor from the video. It also records input events, cursor images, and optionally the microphone. A crash or force-quit keeps everything written up to the last second.
+- **Recording** captures one display, an area of it, or one window with ScreenCaptureKit, and hides the cursor from the video. It also records input events, cursor images, and optionally the microphone. A crash or force-quit keeps everything written up to the last second.
 - **Timeline** reads a recording and works out the automatic zooms from your clicks. It then gives the camera position, zoom, and cursor state for any frame. Its answers are pure functions of time, so a renderer can ask from any thread in any order and get identical results.
 - **Render** draws each output frame: the screen zoomed to the camera, the cursor redrawn on top, and a background with padding, rounded corners, and a shadow. Preview, export, and stills share one compositor, so they produce the same pixels.
 - **osrec** is a command-line harness that drives these modules from a terminal.
-- **Studio** is the app: a take library, recording, a zoom editor with a live preview, and export. The Xcode project in `App/` wraps it in a bundle.
+- **Studio** is the app: a take library, recording of the entire screen, an area, or a window, a zoom editor with a live preview, and export. The Xcode project in `App/` wraps it in a bundle.
 
 ## Requirements
 
@@ -66,6 +66,21 @@ Export a take to MP4, or a single frame to PNG:
 
 Without `--display`, `osrec` records the main display. Auto-zoom only reacts to clicks on the recorded display.
 
+### Record an area or a window
+
+```sh
+.build/release/osrec record --area 100,80,1280,720 --duration 5           # x,y,width,height in points from the display's top-left
+.build/release/osrec record --area 0,0,800,600 --display <id> --duration 5
+.build/release/osrec windows                                               # window ids, frontmost first
+.build/release/osrec record --window <id> --duration 5
+```
+
+An area is clipped to its display. Each side must be at least 64 pixels after clipping. A window target records the window's own display, with windows of other apps hidden. The window's menus, sheets, and other windows still show, because they belong to the same app. The crop is the window's frame when recording starts, so it does not follow the window if it moves.
+
+The recorder still captures the whole display. The area is stored in `recording.json`, and the export crops to it. So clicks outside the area do not zoom, the camera stays inside the area, and the exported canvas takes the area's shape. `osrec inspect` prints the area.
+
+In the app, choose Entire Screen, Area, or Window on Home. For Area, drag a rectangle on the overlay, then press Return or Record. Press Escape to cancel. The app remembers the last area for each display.
+
 To stop a recording early, press Ctrl-C. If the recorder was killed instead, run `osrec recover <dir>.osrec` to finish the take. It's safe to run it more than once.
 
 `osrec inspect --check-determinism` reads every frame forward, in reverse, shuffled, and from several threads at once. It exits non-zero if any answer differs.
@@ -75,7 +90,7 @@ To stop a recording early, press Ctrl-C. If the recorder was killed instead, run
 A take is a `.osrec` directory:
 
 ```
-recording.json     manifest, replaced atomically; the commit point
+recording.json     manifest, replaced atomically; the commit point; holds the area for area and window takes
 screen.mov         fragmented QuickTime, 1 s fragments
 microphone.mov     fragmented QuickTime, only when recorded with --mic
 events.ndjson      append-only input and cursor events
@@ -84,7 +99,7 @@ cursors/<id>.png   cursor images, named by content hash
 project.json       edits (zooms, style, output format), written by the editor; the recorder never touches it
 ```
 
-Every timestamp is in integer microseconds from the first complete video frame. Positions are in screen-video pixels. [`recording-directory-example.md`](docs/design/accepted/recording-directory-example.md) shows a full example.
+Every timestamp is in integer microseconds from the first complete video frame. Positions are in screen-video pixels, including the area. A manifest with an area is format version 2; one without is still written as version 1, so older builds can read it. [`recording-directory-example.md`](docs/design/accepted/recording-directory-example.md) shows a full example.
 
 ## Layout
 
@@ -100,7 +115,7 @@ docs/design/              brief, accepted design and rationale, rejected candida
 
 ## Design
 
-[`docs/design/accepted/rationale.md`](docs/design/accepted/rationale.md) explains the main decisions. These include running capture in-process instead of in a helper, using fragmented `.mov` for crash safety, and solving springs exactly instead of replaying them. The same document records what the experiments measured.
+[`docs/design/accepted/rationale.md`](docs/design/accepted/rationale.md) explains the main decisions. [`docs/design/capture-targets/rationale.md`](docs/design/capture-targets/rationale.md) explains areas and windows. These include running capture in-process instead of in a helper, using fragmented `.mov` for crash safety, and solving springs exactly instead of replaying them. The same document records what the experiments measured.
 
 ## Licence
 
