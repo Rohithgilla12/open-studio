@@ -26,7 +26,7 @@ struct ZoomStrip: View {
                 Rectangle()
                     .fill(Color.accentColor)
                     .frame(width: 2, height: Self.height + 8)
-                    .offset(x: scale.x(at: editor.playhead) - 1, y: -4)
+                    .offset(x: scale.x(at: editor.playhead.recording) - 1, y: -4)
                     .allowsHitTesting(false)
             }
             .coordinateSpace(.named(ZoomBlock.space))

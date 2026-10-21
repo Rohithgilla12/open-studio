@@ -12,7 +12,7 @@ struct EditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PlayerSurface(player: editor.preview.player)
+            PlayerSurface(layer: editor.preview.surface)
                 .aspectRatio(canvasAspect, contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(16)
@@ -70,32 +70,26 @@ struct EditorView: View {
 }
 
 struct PlayerSurface: NSViewRepresentable {
-    let player: AVPlayer
+    let layer: CALayer
 
-    func makeNSView(context: Context) -> PlayerLayerView {
-        let view = PlayerLayerView()
-        view.playerLayer.player = player
-        return view
-    }
+    func makeNSView(context: Context) -> PlayerLayerView { PlayerLayerView(layer: layer) }
 
-    func updateNSView(_ view: PlayerLayerView, context: Context) {
-        if view.playerLayer.player !== player { view.playerLayer.player = player }
-    }
+    func updateNSView(_ view: PlayerLayerView, context: Context) {}
 }
 
 final class PlayerLayerView: NSView {
-    let playerLayer = AVPlayerLayer()
+    let surface: CALayer
 
-    init() {
+    init(layer: CALayer) {
+        surface = layer
         super.init(frame: .zero)
-        playerLayer.videoGravity = .resizeAspect
         wantsLayer = true
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used from a nib") }
 
-    override func makeBackingLayer() -> CALayer { playerLayer }
+    override func makeBackingLayer() -> CALayer { surface }
 }
 
 struct TransportBar: View {
@@ -109,7 +103,7 @@ struct TransportBar: View {
             .labelStyle(.iconOnly)
             .keyboardShortcut(.space, modifiers: [])
             .frame(width: 28)
-            Text("\(TimeText.text(editor.playhead)) / \(TimeText.text(editor.duration))")
+            Text("\(TimeText.text(editor.playhead.output)) / \(TimeText.text(editor.outputDuration))")
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
             Spacer()
@@ -118,8 +112,11 @@ struct TransportBar: View {
 }
 
 enum TimeText {
-    static func text(_ t: RecordingTime) -> String {
-        let tenths = Int((t.seconds * 10).rounded(.down))
+    static func text(_ t: RecordingTime) -> String { text(seconds: t.seconds) }
+    static func text(_ t: OutputTime) -> String { text(seconds: t.seconds) }
+
+    private static func text(seconds: Double) -> String {
+        let tenths = Int((seconds * 10).rounded(.down))
         return String(format: "%d:%02d.%d", tenths / 600, tenths / 10 % 60, tenths % 10)
     }
 }
@@ -129,8 +126,8 @@ struct ZoomActions: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Button("Add Zoom", systemImage: "plus.magnifyingglass") { editor.addZoom(at: editor.playhead) }
-                .disabled(!editor.canAddZoom(at: editor.playhead))
+            Button("Add Zoom", systemImage: "plus.magnifyingglass") { editor.addZoom(at: editor.playhead.recording) }
+                .disabled(!editor.canAddZoom(at: editor.playhead.recording))
                 .help("Add a zoom centred on the playhead")
             Button("Delete Zoom", systemImage: "trash") { editor.deleteSelection() }
                 .keyboardShortcut(.delete, modifiers: [])

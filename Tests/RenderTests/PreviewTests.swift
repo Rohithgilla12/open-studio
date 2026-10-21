@@ -131,7 +131,7 @@ struct PreviewSpec {
         // export tests held the GPU), so the contract is monotonic updates that reach the end.
         let seen = Seen()
         let collector = Task { @MainActor in
-            for await t in preview.playhead() { seen.append(t) }
+            for await t in preview.playhead() { seen.append(t.output) }
         }
         preview.play()
         let reachedEnd = await tap.wait(.seconds(10)) { seen.times.last.map { $0 >= .seconds(1.9) } ?? false }
@@ -145,9 +145,9 @@ struct PreviewSpec {
     }
 
     final class Seen: Sendable {
-        private let state = Mutex<[RecordingTime]>([])
-        var times: [RecordingTime] { state.withLock { $0 } }
+        private let state = Mutex<[OutputTime]>([])
+        var times: [OutputTime] { state.withLock { $0 } }
         var count: Int { state.withLock { $0.count } }
-        func append(_ t: RecordingTime) { state.withLock { $0.append(t) } }
+        func append(_ t: OutputTime) { state.withLock { $0.append(t) } }
     }
 }

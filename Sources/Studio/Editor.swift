@@ -10,7 +10,7 @@ public final class Editor {
     public private(set) var project: Project
     public let preview: PreviewPlayer
     public var selection: ZoomSegment.ID?
-    public private(set) var playhead: RecordingTime = .zero
+    public private(set) var playhead: Playhead = .start
     public private(set) var isPlaying = false
     public private(set) var saveState: SaveState = .saved
     public private(set) var hasSavedEdits: Bool
@@ -40,12 +40,15 @@ public final class Editor {
                 guard let self else { return }
                 playhead = t
                 // The periodic observer also fires when playback starts or stops, including at the end.
-                isPlaying = preview.player.rate != 0
+                isPlaying = preview.isPlaying
             }
         }
     }
 
+    /// The strip's axis: the whole recording.
     public var duration: RecordingTime { project.source.duration }
+    /// What the viewer gets, for the transport label.
+    public var outputDuration: OutputTime { project.timeline.map.duration }
     public var takeName: String { project.source.directory.deletingPathExtension().lastPathComponent }
     public var zooms: [ZoomSegment] { project.edits.zooms.segments }
 
@@ -128,7 +131,7 @@ public final class Editor {
     }
 
     public func play() {
-        if playhead >= duration - .milliseconds(50) { scrub(to: .zero) }
+        if playhead.output >= outputDuration - .milliseconds(50) { scrub(to: .zero) }
         preview.play()
         isPlaying = true
     }
@@ -138,9 +141,13 @@ public final class Editor {
         isPlaying = false
     }
 
+    /// From the strip, in recording time. Inside a cut the playhead lands on the cut's end, which
+    /// is where the marker is drawn.
     public func scrub(to t: RecordingTime) {
         let clamped = min(max(t, .zero), duration)
-        playhead = clamped
+        let map = project.timeline.map
+        let output = map.output(collapsing: clamped)
+        playhead = Playhead(output: output, recording: map.recording(at: output))
         preview.scrub(to: clamped)
     }
 
