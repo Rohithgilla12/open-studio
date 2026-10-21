@@ -13,7 +13,7 @@ public struct Project: Sendable {
     public let source: SourceRecording
     /// The single source of truth for edit state. `timeline` is derived from it.
     public var edits: Edits {
-        didSet { timeline = Timeline(source: source, zooms: edits.zooms, settings: edits.settings) }
+        didSet { timeline = Timeline(source: source, zooms: edits.zooms, settings: edits.settings, cuts: edits.cuts) }
     }
     public private(set) var timeline: Timeline
     /// Whether `edits` came from project.json or were generated on open.
@@ -34,7 +34,7 @@ public struct Project: Sendable {
         }
         let url = ProjectFile.url(in: take)
         guard FileManager.default.fileExists(atPath: url.path),
-            let file = try ProjectFile.read(url, recordingID: source.id, duration: source.duration)
+            let (file, cuts) = try ProjectFile.read(url, recordingID: source.id, duration: source.duration)
         else {
             return Project(source: source, edits: Edits.generated(for: source), origin: .generated)
         }
@@ -42,7 +42,7 @@ public struct Project: Sendable {
             source: source,
             edits: Edits(
                 zooms: file.zooms, settings: file.settings, style: file.style, format: file.output,
-                audio: file.audio ?? .default),
+                audio: file.audio ?? .default, cuts: cuts),
             origin: .saved)
     }
 
@@ -62,7 +62,7 @@ public struct Project: Sendable {
         self.source = source
         self.edits = edits
         self.origin = origin
-        timeline = Timeline(source: source, zooms: edits.zooms, settings: edits.settings)
+        timeline = Timeline(source: source, zooms: edits.zooms, settings: edits.settings, cuts: edits.cuts)
     }
 
     /// The canvas the format renders at for this take. An entire-screen take keeps the preset's box;
@@ -77,8 +77,9 @@ public struct Project: Sendable {
     /// the same bytes (sorted keys). The only file this module ever writes into a take.
     public func save() throws(ProjectError) {
         let file = ProjectFile(
-            format: ProjectFile.formatIdentifier, version: ProjectFile.currentVersion, recordingID: source.id,
-            zooms: edits.zooms, settings: edits.settings, style: edits.style, output: edits.format, audio: edits.audio)
+            format: ProjectFile.formatIdentifier, version: ProjectFile.version(for: edits), recordingID: source.id,
+            zooms: edits.zooms, settings: edits.settings, style: edits.style, output: edits.format, audio: edits.audio,
+            cuts: edits.cuts.isEmpty ? nil : edits.cuts.cuts)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         let data: Data
@@ -118,13 +119,20 @@ public struct Edits: Sendable, Hashable {
     public var format: OutputFormat
     /// Applies only to the sources the take has.
     public var audio: AudioLevels
+    /// What the user removed, in recording time. Undone, autosaved, and exported with the rest of
+    /// the value, so a cut is undone exactly like a zoom move.
+    public var cuts: Cuts
 
-    public init(zooms: ZoomTrack, settings: TimelineSettings, style: Style, format: OutputFormat, audio: AudioLevels = .default) {
+    public init(
+        zooms: ZoomTrack, settings: TimelineSettings, style: Style, format: OutputFormat, audio: AudioLevels = .default,
+        cuts: Cuts = .none
+    ) {
         self.zooms = zooms
         self.settings = settings
         self.style = style
         self.format = format
         self.audio = audio
+        self.cuts = cuts
     }
 
     /// What a take gets before anyone edits it: automatic zooms, default settings and style, 1080p60.
@@ -143,6 +151,7 @@ public enum ProjectError: Error, Sendable, Equatable {
     case projectUnreadable(String)
     case projectFromNewerVersion(found: Int, supported: Int)
     case invalidZooms(ZoomTrackError)
+    case invalidCuts(CutsError)
     case saveFailed(String)
 }
 
@@ -150,14 +159,16 @@ public enum ProjectError: Error, Sendable, Equatable {
 ///
 ///     { "format": "open-studio.project", "version": 1, "recordingID": "...",
 ///       "zooms": [ {id, range: {start, end}, scale, focus} ], "settings": {...},
-///       "style": {...}, "output": {...}, "audio": {microphone: {volume, isMuted}, systemAudio: {...}} }
+///       "style": {...}, "output": {...}, "audio": {microphone: {volume, isMuted}, systemAudio: {...}},
+///       "cuts": [ {id, range: {start, end}} ] }
 ///
 /// Additive keys keep the version, as in the recording format: the settings decoders default
 /// missing keys. A change to the meaning of a field bumps the version.
 struct ProjectFile: Codable {
     static let fileName = "project.json"
     static let formatIdentifier = "open-studio.project"
-    static let currentVersion = 1
+    /// The newest version this build reads.
+    static let currentVersion = 2
 
     var format: String
     var version: Int
@@ -167,6 +178,19 @@ struct ProjectFile: Codable {
     var style: Style
     var output: OutputFormat
     var audio: AudioLevels?
+    /// Recording microseconds, the same `{id, range}` shape as a zoom; trims are the cuts that
+    /// touch 0 or the duration. Decoded bare and validated against the duration in `read`, like
+    /// zooms. Absent means no cuts.
+    var cuts: [Cut]?
+
+    /// The lowest version whose reader renders this file correctly. A file without cuts stays
+    /// version 1, so a build before cuts keeps opening it. A file with cuts is version 2, because
+    /// that build ignores unknown keys: it would export the removed ranges and its autosave would
+    /// rewrite the file without them. That changes what the file means, which bumps the version,
+    /// and the older build refuses a newer version without rewriting it.
+    static func version(for edits: Edits) -> Int {
+        edits.cuts.isEmpty ? 1 : 2
+    }
 
     static func url(in take: URL) -> URL { take.appending(path: fileName, directoryHint: .notDirectory) }
 
@@ -178,8 +202,11 @@ struct ProjectFile: Codable {
         var recordingID: UUID
     }
 
-    /// nil when the file belongs to another take.
-    static func read(_ url: URL, recordingID: UUID, duration: RecordingTime) throws(ProjectError) -> ProjectFile? {
+    /// nil when the file belongs to another take. The cuts come back validated against the
+    /// recording: overlapping cuts, cuts outside it, a kept sliver, or nothing kept are rejected,
+    /// never repaired. A zoom inside a cut is valid: inert while the cut exists, back when it is
+    /// restored.
+    static func read(_ url: URL, recordingID: UUID, duration: RecordingTime) throws(ProjectError) -> (file: ProjectFile, cuts: Cuts)? {
         let data: Data
         do {
             data = try Data(contentsOf: url)
@@ -217,7 +244,13 @@ struct ProjectFile: Codable {
         if let problem = file.audio?.problem {
             throw .projectUnreadable("\(fileName): audio \(problem)")
         }
-        return file
+        let cuts: Cuts
+        do {
+            cuts = try Cuts(validating: file.cuts ?? [], within: duration)
+        } catch {
+            throw .invalidCuts(error)
+        }
+        return (file, cuts)
     }
 }
 

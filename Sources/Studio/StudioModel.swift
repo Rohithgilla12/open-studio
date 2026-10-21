@@ -460,6 +460,7 @@ public struct StudioAlert: Sendable, Equatable, Identifiable {
                 "Its edits were saved by a newer build (version \(found); this build reads up to \(supported))."
             case .projectUnreadable(let detail), .saveFailed(let detail): detail
             case .invalidZooms(let error): "Its saved zooms are invalid: \(error)"
+            case .invalidCuts(let error): "Its saved cuts are invalid: \(error)"
             }
         case let error as RenderError:
             switch error {

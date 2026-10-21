@@ -169,11 +169,11 @@ struct ProjectSpec {
         let take = try Fixture.metadataOnlyTake()
         defer { try? FileManager.default.removeItem(at: take) }
         try writeProjectJSON(take) { object in
-            object["version"] = 2
+            object["version"] = 3
             object["futureKey"] = "kept"
         }
         let bytes = try Data(contentsOf: ProjectFile.url(in: take))
-        #expect(throws: ProjectError.projectFromNewerVersion(found: 2, supported: 1)) { try Project.open(take) }
+        #expect(throws: ProjectError.projectFromNewerVersion(found: 3, supported: 2)) { try Project.open(take) }
         #expect(try Data(contentsOf: ProjectFile.url(in: take)) == bytes)
     }
 
