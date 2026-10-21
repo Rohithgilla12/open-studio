@@ -139,7 +139,11 @@ extension OutputTime {
 }
 
 extension RecordingTime {
-    /// A time in one of the take's source movies. Only the composition builder uses it, to name
-    /// the ranges it inserts.
+    /// A time in one of the take's source movies, which run on the recording's clock. Only the
+    /// composition builder uses these, to name the ranges it inserts and where a track's media ends.
     var mediaTime: CMTime { CMTime(value: microseconds, timescale: 1_000_000) }
+
+    init(mediaTime time: CMTime) {
+        self = .seconds(time.seconds)
+    }
 }

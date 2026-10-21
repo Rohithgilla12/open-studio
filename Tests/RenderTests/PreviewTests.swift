@@ -60,7 +60,7 @@ struct PreviewSpec {
         defer { try? FileManager.default.removeItem(at: take) }
         var project = try Project.open(take)
         project.edits.style = style(RGBColor(red: 0, green: 0, blue: 1))
-        let movie = try await MovieComposition.load(project.source)
+        let movie = MovieComposition(media: try await SourceMedia.load(project.source), map: project.timeline.map)
         let blue = try RenderScene.make(project: project, format: project.edits.format, reusing: nil)
         let item = AVPlayerItem(asset: movie.asset)
         item.videoComposition = movie.videoComposition(scene: blue, frameRate: .fps60)

@@ -25,7 +25,7 @@ public enum Still {
         let movie: MovieComposition
         let scene: RenderScene
         do {
-            movie = try await MovieComposition.load(project.source)
+            movie = MovieComposition(media: try await SourceMedia.load(project.source), map: project.timeline.map)
             scene = try RenderScene.make(project: project, format: project.edits.format, reusing: nil)
         } catch {
             throw .render(error)

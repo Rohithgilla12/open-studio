@@ -28,7 +28,7 @@ public final class PreviewPlayer {
     public private(set) var lastError: RenderError?
 
     public init(project: Project) async throws(RenderError) {
-        movie = try await MovieComposition.load(project.source)
+        movie = MovieComposition(media: try await SourceMedia.load(project.source), map: project.timeline.map)
         scene = try RenderScene.make(project: project, format: project.edits.format, reusing: nil)
         item = AVPlayerItem(asset: movie.asset)
         item.videoComposition = movie.videoComposition(scene: scene, frameRate: project.edits.format.frameRate)

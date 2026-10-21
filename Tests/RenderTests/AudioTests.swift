@@ -102,7 +102,7 @@ struct AudioPreviewSpec {
         var project = try Project.open(take)
         project.edits.audio.microphone.volume = 0.25
         let preview = try await PreviewPlayer(project: project)
-        let movie = try await MovieComposition.load(project.source)
+        let movie = MovieComposition(media: try await SourceMedia.load(project.source), map: project.timeline.map)
         let ids = try #require(movie.audioTracks[.microphone].flatMap { mic in movie.audioTracks[.systemAudio].map { (mic, $0) } })
         #expect(Self.volumes(preview.item.audioMix) == [ids.0: 0.25, ids.1: 1])
 
