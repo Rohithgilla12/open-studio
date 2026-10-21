@@ -53,7 +53,7 @@ final class RenderScene: Sendable {
     ///
     /// `camera` is the camera frame covering `t`, or nil when there is none at `t` (before the
     /// camera's first frame, or after it was lost), in which case no overlay is drawn.
-    func image(source: CIImage, camera: CIImage? = nil, at t: RecordingTime) -> CIImage {
+    func image(source: CIImage, camera: CIImage? = nil, at t: OutputTime) -> CIImage {
         let frame = timeline.frame(at: t)
         let cursorInfo = frame.cursor.image.flatMap { timeline.source.cursorImages[$0] }
         let geometry = FrameGeometry(frame: frame, layout: layout, cursorImage: cursorInfo, pressedScale: pressedScale)
@@ -156,5 +156,5 @@ enum RenderDevice {
 public enum RenderError: Error, Sendable, Equatable {
     case screenMovieUnreadable(String)
     case backgroundImageUnreadable(String)
-    case missingSourceFrame(RecordingTime)
+    case missingSourceFrame(OutputTime)
 }

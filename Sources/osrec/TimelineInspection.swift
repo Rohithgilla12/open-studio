@@ -4,9 +4,9 @@ import Timeline
 
 /// `--frames <start-ms>:<end-ms>:<step-ms>`, inclusive of the end when the step lands on it.
 struct FrameGrid: ExpressibleByArgument {
-    let start: RecordingTime
-    let end: RecordingTime
-    let step: RecordingTime
+    let start: OutputTime
+    let end: OutputTime
+    let step: OutputTime
 
     init?(argument: String) {
         let fields = argument.split(separator: ":", omittingEmptySubsequences: false).map { Double($0) }
@@ -18,9 +18,9 @@ struct FrameGrid: ExpressibleByArgument {
         self.step = .seconds(step / 1000)
     }
 
-    var times: [RecordingTime] {
+    var times: [OutputTime] {
         stride(from: start.microseconds, through: end.microseconds, by: Int(step.microseconds))
-            .map(RecordingTime.init(microseconds:))
+            .map(OutputTime.init(microseconds:))
     }
 }
 
@@ -72,9 +72,9 @@ enum TimelineInspection {
 
     static func checkDeterminism(_ timeline: Timeline, frameRate: Int) async -> Bool {
         let rate = Int64(max(frameRate, 1))
-        let duration = timeline.source.duration.microseconds
+        let duration = timeline.map.duration.microseconds
         // Integer frame times avoid accumulating a rounded 1/fps step.
-        let times = (0...(duration * rate / 1_000_000)).map { RecordingTime(microseconds: $0 * 1_000_000 / rate) }
+        let times = (0...(duration * rate / 1_000_000)).map { OutputTime(microseconds: $0 * 1_000_000 / rate) }
 
         let forward = times.map { timeline.frame(at: $0).bits }
         let reverse = Array(times.reversed().map { timeline.frame(at: $0).bits }.reversed())
@@ -108,6 +108,7 @@ enum TimelineInspection {
     }
 
     static func ms(_ t: RecordingTime) -> String { String(format: "%.3f", Double(t.microseconds) / 1000) }
+    static func ms(_ t: OutputTime) -> String { String(format: "%.3f", Double(t.microseconds) / 1000) }
 
     static func point(_ p: Point) -> String { String(format: "(%.1f, %.1f)", p.x, p.y) }
 }

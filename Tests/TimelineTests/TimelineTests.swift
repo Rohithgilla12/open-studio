@@ -7,7 +7,7 @@ struct TimelineSpec {
     @Test func timesClampToTheRecording() throws {
         let timeline = try Fixture.timeline()
         #expect(timeline.frame(at: .seconds(-5)) == timeline.frame(at: .zero))
-        #expect(timeline.frame(at: .seconds(99)) == timeline.frame(at: timeline.source.duration))
+        #expect(timeline.frame(at: .seconds(99)) == timeline.frame(at: timeline.map.duration))
         #expect(timeline.frame(at: .seconds(99)) != timeline.frame(at: .seconds(2)))
     }
 

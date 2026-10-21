@@ -86,7 +86,7 @@ struct CameraSpec {
     }
 
     static func camera(_ source: SourceRecording, settings: CameraSettings = CameraSettings()) -> CameraTrack {
-        CameraTrack(source: source, zooms: AutoZoom.track(for: source), settings: settings)
+        CameraTrack(source: source, zooms: AutoZoom.track(for: source), settings: settings, retiming: .identity(for: source))
     }
 
     @Test func cameraReachesTheClampedGroupCentroidInsideALongSegment() throws {
@@ -161,7 +161,7 @@ struct CameraSpec {
         let source = try Self.restingSource()
         let a = ZoomSegment(range: TimeRange(start: .seconds(1), end: .seconds(3))!, scale: 2, focus: .followPointer)
         let b = ZoomSegment(range: TimeRange(start: .seconds(3), end: .seconds(5))!, scale: 2, focus: .followPointer)
-        let camera = CameraTrack(source: source, zooms: try ZoomTrack(validating: [a, b]), settings: CameraSettings())
+        let camera = CameraTrack(source: source, zooms: try ZoomTrack(validating: [a, b]), settings: CameraSettings(), retiming: .identity(for: source))
         #expect(camera.scale.knots.map(\.target) == [1, 2, 2, 1], "no target of 1 at the 3 s boundary")
         #expect(camera.scale.knots.map(\.time) == [0, 1, 3, 5])
         #expect(camera.state(at: 3.2).scale.isApproximately(2, within: 1e-3))
@@ -170,7 +170,7 @@ struct CameraSpec {
     @Test func fixedFocusTargetsThePointClampedToTheFrame() throws {
         let source = try Self.restingSource()
         let corner = ZoomSegment(range: TimeRange(start: .seconds(1), end: .seconds(6))!, scale: 2, focus: .fixed(x: 1, y: 1))
-        let camera = CameraTrack(source: source, zooms: try ZoomTrack(validating: [corner]), settings: CameraSettings())
+        let camera = CameraTrack(source: source, zooms: try ZoomTrack(validating: [corner]), settings: CameraSettings(), retiming: .identity(for: source))
         let state = camera.state(at: 5.9)
         #expect(state.center.x.isApproximately(1440, within: 1))
         #expect(state.center.y.isApproximately(810, within: 1))

@@ -3,7 +3,7 @@ struct CameraTrack: Sendable {
     let scale: SpringTrack<Double>
     let center: SpringTrack<Vector2>
 
-    init(source: SourceRecording, zooms: ZoomTrack, settings: CameraSettings) {
+    init(source: SourceRecording, zooms: ZoomTrack, settings: CameraSettings, retiming: Retiming) {
         let bounds = source.visibleRect
         visibleRect = bounds
         let frameCenter = Vector2(bounds.center)
@@ -51,8 +51,10 @@ struct CameraTrack: Sendable {
             }
         }
 
-        scale = SpringTrack(initial: 1, changes: scaleChanges, rescaleShortIntervals: settings.rescaleShortIntervals)
-        center = SpringTrack(initial: frameCenter, changes: centerChanges, rescaleShortIntervals: settings.rescaleShortIntervals)
+        let retimedScale = retiming.apply(initial: 1, scaleChanges)
+        let retimedCenter = retiming.apply(initial: frameCenter, centerChanges)
+        scale = SpringTrack(initial: retimedScale.initial, changes: retimedScale.changes, rescaleShortIntervals: settings.rescaleShortIntervals)
+        center = SpringTrack(initial: retimedCenter.initial, changes: retimedCenter.changes, rescaleShortIntervals: settings.rescaleShortIntervals)
     }
 
     static func visibleSamples(of source: SourceRecording, from start: RecordingTime, until end: RecordingTime) -> [PointerSample] {
@@ -87,6 +89,7 @@ struct CameraTrack: Sendable {
             x: (bounds.minX + halfWidth)...(bounds.maxX - halfWidth), y: (bounds.minY + halfHeight)...(bounds.maxY - halfHeight))
     }
 
+    /// `seconds` is output time.
     func state(at seconds: Double) -> CameraState {
         let (s, scaleVelocity) = scale.evaluate(at: seconds)
         let (c, centerVelocity) = center.evaluate(at: seconds)

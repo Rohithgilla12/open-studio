@@ -13,7 +13,7 @@ struct AreaSpec {
     }
 
     static func camera(_ source: SourceRecording, zooms: ZoomTrack? = nil) -> CameraTrack {
-        CameraTrack(source: source, zooms: zooms ?? AutoZoom.track(for: source), settings: CameraSettings())
+        CameraTrack(source: source, zooms: zooms ?? AutoZoom.track(for: source), settings: CameraSettings(), retiming: .identity(for: source))
     }
 
     static func contains(_ outer: Rect, _ inner: Rect) -> Bool {

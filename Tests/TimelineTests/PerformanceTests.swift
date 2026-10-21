@@ -67,7 +67,7 @@ struct PerformanceSpec {
         let build = clock.now - buildStart
 
         var generator = SeededGenerator(state: 0x5EED)
-        let queries = (0..<1000).map { _ in RecordingTime.seconds(Double.random(in: 0...LongRecording.duration, using: &generator)) }
+        let queries = (0..<1000).map { _ in OutputTime.seconds(Double.random(in: 0...LongRecording.duration, using: &generator)) }
         var checksum = 0.0
         for t in queries.prefix(100) { checksum += timeline.frame(at: t).camera.center.x }
         let queryStart = clock.now

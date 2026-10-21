@@ -39,7 +39,8 @@ struct SpringTrack<Value: SpringValue>: Sendable {
         var knots = [current]
         knots.reserveCapacity(distinct.count + 1)
         for (index, change) in distinct.enumerated() {
-            let (position, velocity) = current.response.advance(from: current, by: change.time - current.time)
+            let (position, velocity) = change.snap
+                ? (change.target, Value.zero) : current.response.advance(from: current, by: change.time - current.time)
             var spring = change.spring
             if rescaleShortIntervals, index + 1 < distinct.count {
                 spring = spring.rescaled(toSettleWithin: distinct[index + 1].time - change.time)
@@ -67,6 +68,9 @@ struct TargetChange<Value: SpringValue>: Sendable {
     var time: Double
     var target: Value
     var spring: Spring
+    /// The spring comes to rest on `target` here instead of carrying its state across: the cursor
+    /// at a join.
+    var snap = false
 }
 
 /// The closed-form step response of one spring, with everything that does not depend on dt
@@ -150,7 +154,7 @@ struct SpringResponse: Sendable, Hashable {
 }
 
 /// What a spring can animate: a vector space over Double. Double (zoom scale) and Vector2 (positions).
-protocol SpringValue: Sendable {
+protocol SpringValue: Sendable, Equatable {
     static var zero: Self { get }
     static func + (lhs: Self, rhs: Self) -> Self
     static func - (lhs: Self, rhs: Self) -> Self

@@ -160,7 +160,7 @@ public enum Export {
         }
         let bytes = (try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? Int64) ?? 0
         return ExportReport(
-            destination: destination, frames: video.count, duration: RecordingTime(movie.duration), wallSeconds: wall,
+            destination: destination, frames: video.count, duration: OutputTime(compositionTime: movie.duration), wallSeconds: wall,
             bytes: bytes, warnings: movie.warnings + scene.assets.warnings)
     }
 
@@ -269,7 +269,8 @@ public struct ExportProgress: Sendable, Hashable {
 public struct ExportReport: Sendable, Hashable {
     public let destination: URL
     public let frames: Int
-    public let duration: RecordingTime
+    /// The exported movie's length: the kept duration.
+    public let duration: OutputTime
     public let wallSeconds: Double
     public let bytes: Int64
     /// Things that degraded the output without failing it: a microphone that would not load, a

@@ -104,7 +104,7 @@ public final class PreviewPlayer {
         guard let target = seekTarget else { return }
         seekTarget = nil
         seekInFlight = true
-        player.seek(to: target.cmTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+        player.seek(to: target.mediaTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 seekInFlight = false
@@ -119,7 +119,7 @@ public final class PreviewPlayer {
             let observer = Observer(token: player.addPeriodicTimeObserver(
                 forInterval: CMTime(value: 1, timescale: 60), queue: .main
             ) { time in
-                continuation.yield(RecordingTime(time))
+                continuation.yield(RecordingTime(microseconds: OutputTime(compositionTime: time).microseconds))
             })
             continuation.onTermination = { [player] _ in
                 player.removeTimeObserver(observer.token)

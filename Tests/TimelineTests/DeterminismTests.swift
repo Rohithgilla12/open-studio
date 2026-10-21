@@ -30,8 +30,8 @@ struct DeterminismSpec {
         settings.camera.leadIn = CameraSettings.observedLeadIn
         settings.cursor.idleHideAfter = CursorSettings.observedIdleHide
         let timeline = try Fixture.timeline(settings: settings)
-        let times = stride(from: 0, through: timeline.source.duration.microseconds, by: 1_000_000 / 240)
-            .map(RecordingTime.init(microseconds:))
+        let times = stride(from: 0, through: timeline.map.duration.microseconds, by: 1_000_000 / 240)
+            .map(OutputTime.init(microseconds:))
 
         let forward = times.map { timeline.frame(at: $0).bits }
         let reverse = times.reversed().map { timeline.frame(at: $0).bits }.reversed()

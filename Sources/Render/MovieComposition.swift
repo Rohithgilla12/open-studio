@@ -28,7 +28,7 @@ struct MovieComposition: @unchecked Sendable {
                 throw RenderError.screenMovieUnreadable("no video track")
             }
             // They agree on the real takes (10.000 s against 10 000 000 µs); min guards a recovered take.
-            duration = min(try await screen.load(.duration), source.duration.cmTime)
+            duration = min(try await screen.load(.duration), source.duration.mediaTime)
             guard let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
                 throw RenderError.screenMovieUnreadable("could not add a video track")
             }

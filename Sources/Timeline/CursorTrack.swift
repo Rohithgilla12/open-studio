@@ -14,6 +14,15 @@ struct CursorTrack: Sendable {
     struct Interval: Sendable, Equatable {
         var start: Double
         var end: Double
+
+        init(start: Double, end: Double) {
+            self.start = start
+            self.end = end
+        }
+
+        init(_ microseconds: (start: Int64, end: Int64)) {
+            self.init(start: Double(microseconds.start) / 1_000_000, end: Double(microseconds.end) / 1_000_000)
+        }
     }
 
     enum PositionTrack: Sendable {
@@ -22,7 +31,7 @@ struct CursorTrack: Sendable {
         case held([PointerSample])
     }
 
-    init(source: SourceRecording, settings: CursorSettings) {
+    init(source: SourceRecording, settings: CursorSettings, retiming: Retiming) {
         self.settings = settings
         frameSize = source.frameSize
         images = source.cursorChanges
@@ -38,19 +47,25 @@ struct CursorTrack: Sendable {
             position = .spring(Self.positionSpring(
                 samples: samples, downs: source.buttons.filter { $0.edge == .down }.map(\.time),
                 frameCenter: Vector2(x: source.frameSize.width / 2, y: source.frameSize.height / 2),
-                spring: spring, settings: settings))
+                spring: spring, settings: settings, retiming: retiming))
         } else {
             position = .held(steady)
         }
 
         presses = Self.pressIntervals(source.buttons, end: source.duration)
 
+        // Hides measure durations the viewer sees, so they run over output time; an instant inside
+        // a cut is dropped, and a removed wait does not leave the cursor hidden after the join.
+        let map = retiming.map
         var activity = source.pointer.map(\.time)
         activity.append(contentsOf: source.buttons.map(\.time))
         activity.sort()
-        var hidden = Self.typingIntervals(keys: source.keyDowns, activity: activity, settings: settings)
+        let shownActivity = activity.compactMap { map.output(at: $0)?.microseconds }
+        let shownKeys = source.keyDowns.compactMap { map.output(at: $0)?.microseconds }
+        var hidden = Self.typingIntervals(
+            keys: shownKeys, activity: shownActivity, count: settings.typingKeyCount, window: settings.typingWindow.microseconds)
         if let idle = settings.idleHideAfter {
-            hidden.append(contentsOf: Self.idleIntervals(activity: activity, after: idle, end: source.duration))
+            hidden.append(contentsOf: Self.idleIntervals(activity: shownActivity, after: idle.microseconds, end: map.duration.microseconds))
         }
         self.hidden = Self.union(hidden, mergingGapsUnder: settings.fadeDuration.seconds)
     }
@@ -59,7 +74,8 @@ struct CursorTrack: Sendable {
     static let restGap = RecordingTime.milliseconds(100)
 
     static func positionSpring(
-        samples: [PointerSample], downs: [RecordingTime], frameCenter: Vector2, spring: Spring, settings: CursorSettings
+        samples: [PointerSample], downs: [RecordingTime], frameCenter: Vector2, spring: Spring, settings: CursorSettings,
+        retiming: Retiming
     ) -> SpringTrack<Vector2> {
         var changes = samples.map { TargetChange(time: $0.time.seconds, target: Vector2($0.position), spring: spring) }
         // The rapid spring takes over for `clickSpringLead` before each mouse-down so the cursor lands on
@@ -82,7 +98,8 @@ struct CursorTrack: Sendable {
             }
         }
         let initial = samples.first.map { Vector2($0.position) } ?? frameCenter
-        return SpringTrack(initial: initial, changes: changes, rescaleShortIntervals: false)
+        let retimed = retiming.apply(initial: initial, changes, snapsAtJoins: true)
+        return SpringTrack(initial: retimed.initial, changes: retimed.changes, rescaleShortIntervals: false)
     }
 
     /// Pairs each button's downs with its ups, runs an unmatched down to `end`, and unions across
@@ -109,40 +126,39 @@ struct CursorTrack: Sendable {
     /// Typing hides the cursor from the n-th key of a burst (n keys within the window and no pointer
     /// activity among them) until the earlier of the next pointer activity and the last key plus the
     /// window. A key that lands while the cursor is still hidden extends the hide, so a slow but
-    /// continuous typist does not flicker back in.
-    static func typingIntervals(keys: [RecordingTime], activity: [RecordingTime], settings: CursorSettings) -> [Interval] {
-        let n = settings.typingKeyCount
+    /// continuous typist does not flicker back in. Times are sorted microseconds on one clock.
+    static func typingIntervals(keys: [Int64], activity: [Int64], count n: Int, window: Int64) -> [Interval] {
         guard n > 0, keys.count >= n else { return [] }
         var intervals: [Interval] = []
-        var open: Interval?
+        var open: (start: Int64, end: Int64)?
         for j in keys.indices {
             let last = keys[j]
-            let nextActivity = activity[activity.firstIndex(keyedBy: \.seconds, after: last.seconds)...].first
-            let end = min(nextActivity ?? last + settings.typingWindow, last + settings.typingWindow).seconds
-            if let interval = open, last.seconds < interval.end {
+            let nextActivity = activity[activity.firstIndex(keyedBy: { Double($0) }, after: Double(last))...].first
+            let end = min(nextActivity ?? last + window, last + window)
+            if let interval = open, last < interval.end {
                 open!.end = end
                 continue
             }
-            if let interval = open { intervals.append(interval) }
+            if let interval = open { intervals.append(Interval(interval)) }
             open = nil
             guard j >= n - 1 else { continue }
             let first = keys[j - n + 1]
-            let latest = activity.isEmpty ? nil : activity[activity.lastIndex(keyedBy: \.seconds, atOrBefore: last.seconds)]
+            let latest = activity.isEmpty ? nil : activity[activity.lastIndex(keyedBy: { Double($0) }, atOrBefore: Double(last))]
             let movedSinceFirst = latest.map { $0 > first && $0 <= last } ?? false
-            if last - first <= settings.typingWindow, !movedSinceFirst {
-                open = Interval(start: last.seconds, end: end)
+            if last - first <= window, !movedSinceFirst {
+                open = (last, end)
             }
         }
-        if let interval = open { intervals.append(interval) }
+        if let interval = open { intervals.append(Interval(interval)) }
         return intervals
     }
 
-    static func idleIntervals(activity: [RecordingTime], after idle: RecordingTime, end: RecordingTime) -> [Interval] {
+    static func idleIntervals(activity: [Int64], after idle: Int64, end: Int64) -> [Interval] {
         var intervals: [Interval] = []
-        var previous = RecordingTime.zero
+        var previous: Int64 = 0
         for next in activity + [end] {
             if next - previous > idle {
-                intervals.append(Interval(start: (previous + idle).seconds, end: next.seconds))
+                intervals.append(Interval((previous + idle, next)))
             }
             previous = max(previous, next)
         }
@@ -162,28 +178,30 @@ struct CursorTrack: Sendable {
         return merged
     }
 
-    func state(at seconds: Double) -> CursorState {
+    /// The spring position and the fades at output seconds; the held position, the image, and the
+    /// presses at the recording seconds shown there.
+    func state(springAt output: Double, recordingAt recording: Double) -> CursorState {
         let (p, v): (Vector2, Vector2)
         switch position {
         case .spring(let track):
-            (p, v) = track.evaluate(at: seconds)
+            (p, v) = track.evaluate(at: output)
         case .held(let samples):
             if samples.isEmpty {
                 (p, v) = (Vector2(x: frameSize.width / 2, y: frameSize.height / 2), .zero)
             } else {
-                let index = samples.lastIndex(keyedBy: \.time.seconds, atOrBefore: seconds)
+                let index = samples.lastIndex(keyedBy: \.time.seconds, atOrBefore: recording)
                 (p, v) = (Vector2(samples[index].position), .zero)
             }
         }
 
         var image: CursorImageID?
         if !images.isEmpty {
-            let index = images.lastIndex(keyedBy: \.time.seconds, atOrBefore: seconds)
-            if images[index].time.seconds <= seconds { image = images[index].image }
+            let index = images.lastIndex(keyedBy: \.time.seconds, atOrBefore: recording)
+            if images[index].time.seconds <= recording { image = images[index].image }
         }
 
-        let press = Self.pressAmount(at: seconds, presses: presses, transition: settings.pressTransition.seconds)
-        let opacity = Self.opacity(at: seconds, hidden: hidden, fade: settings.fadeDuration.seconds)
+        let press = Self.pressAmount(at: recording, presses: presses, transition: settings.pressTransition.seconds)
+        let opacity = Self.opacity(at: output, hidden: hidden, fade: settings.fadeDuration.seconds)
         let onDisplay = p.x >= 0 && p.x < frameSize.width && p.y >= 0 && p.y < frameSize.height
         return CursorState(
             position: p.point, velocity: v.velocity, image: image,

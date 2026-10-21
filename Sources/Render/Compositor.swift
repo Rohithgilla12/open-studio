@@ -98,8 +98,8 @@ final class StyledCompositor: NSObject, AVVideoCompositing, Sendable {
             request.finishCancelledRequest()
             return
         }
-        // Composition time equals recording time in v1; a trim would add its map here and only here.
-        let t = RecordingTime(request.compositionTime)
+        // Composition time is output time: the builder laid the kept spans end to end.
+        let t = OutputTime(compositionTime: request.compositionTime)
         guard let instruction = request.videoCompositionInstruction as? SceneInstruction,
             let source = request.sourceFrame(byTrackID: instruction.screenTrackID),
             let context = pending.context, let output = context.newPixelBuffer()
@@ -127,11 +127,19 @@ final class StyledCompositor: NSObject, AVVideoCompositing, Sendable {
     }
 }
 
-extension RecordingTime {
-    /// The one CMTime bridge. Rounds to the nearest microsecond, the Timeline's resolution.
-    init(_ time: CMTime) {
+/// The CMTime bridges, named by clock. There is no `RecordingTime(CMTime)`: it is the one
+/// conversion that would read a composition time as a recording time and compile.
+extension OutputTime {
+    /// Rounds to the nearest microsecond, the Timeline's resolution.
+    init(compositionTime time: CMTime) {
         self = .seconds(time.seconds)
     }
 
-    var cmTime: CMTime { CMTime(value: microseconds, timescale: 1_000_000) }
+    var compositionTime: CMTime { CMTime(value: microseconds, timescale: 1_000_000) }
+}
+
+extension RecordingTime {
+    /// A time in one of the take's source movies. Only the composition builder uses it, to name
+    /// the ranges it inserts.
+    var mediaTime: CMTime { CMTime(value: microseconds, timescale: 1_000_000) }
 }

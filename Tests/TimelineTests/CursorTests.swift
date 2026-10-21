@@ -7,7 +7,7 @@ struct CursorSpec {
     static func track(_ source: SourceRecording, _ edit: (inout CursorSettings) -> Void = { _ in }) -> CursorTrack {
         var settings = CursorSettings()
         edit(&settings)
-        return CursorTrack(source: source, settings: settings)
+        return CursorTrack(source: source, settings: settings, retiming: .identity(for: source))
     }
 
     /// Pointer at rest from t = 0; three keys 300 ms apart from 1.0 s.
@@ -164,6 +164,11 @@ struct CursorSpec {
         let cursor = Self.track(source) { $0.smoothing = .none }
         #expect(cursor.state(at: 0.15).position == Point(x: 100, y: 100))
     }
+}
+
+extension CursorTrack {
+    /// One clock, as before cuts.
+    func state(at seconds: Double) -> CursorState { state(springAt: seconds, recordingAt: seconds) }
 }
 
 extension CursorTrack.PositionTrack {

@@ -73,9 +73,9 @@ struct ExportSpec {
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
 
-        for t in [RecordingTime.seconds(0.5), .seconds(1.0), .seconds(1.5)] {
+        for t in [OutputTime.seconds(0.5), .seconds(1.0), .seconds(1.5)] {
             let still = Pixels(try await Still.cgImage(project, at: t))
-            let exported = Pixels(try await generator.image(at: t.cmTime).image)
+            let exported = Pixels(try await generator.image(at: t.compositionTime).image)
             let psnr = still.psnr(against: exported, shiftX: 0)
             let shifted = still.psnr(against: exported, shiftX: 1)
             #expect(psnr >= 38, "psnr \(psnr) at \(t.seconds) s")
