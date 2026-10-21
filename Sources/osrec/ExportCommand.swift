@@ -24,7 +24,7 @@ struct ExportCommand: AsyncParsableCommand {
     @Flag(help: "Leave system audio out of the mix, whatever project.json says.") var muteSystem = false
     @Option(
         name: .customLong("still"),
-        help: "Write the frame at this many milliseconds as <still-dir>/<take>-<ms>.png instead of a movie. Repeatable.")
+        help: "Write the frame at this many milliseconds into the exported movie (output time, after cuts) as <still-dir>/<take>-<ms>.png instead of a movie. Repeatable.")
     var stills: [Int64] = []
     @Option(help: "Directory for --still PNGs. Default: the current directory.") var stillDir: String = "."
 
@@ -55,7 +55,9 @@ struct ExportCommand: AsyncParsableCommand {
             let level = project.edits.audio[source]
             return "\(source.name.lowercased()) \(level.isMuted ? "muted" : String(format: "at %.2f", level.volume))"
         }
-        print("edits: \(project.origin == .saved ? "project.json" : "generated"), \(project.edits.zooms.segments.count) zooms, \(camera), "
+        let cuts = project.edits.cuts.cuts.count
+        print("edits: \(project.origin == .saved ? "project.json" : "generated"), \(project.edits.zooms.segments.count) zooms, "
+            + "\(cuts) cut\(cuts == 1 ? "" : "s") (output \(String(format: "%.3f", project.timeline.map.duration.seconds)) s), \(camera), "
             + (audio.isEmpty ? "no audio" : audio.joined(separator: ", ")))
 
         if !stills.isEmpty {

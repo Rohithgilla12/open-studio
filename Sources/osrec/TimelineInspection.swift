@@ -1,5 +1,6 @@
 import ArgumentParser
 import Foundation
+import Render
 import Timeline
 
 /// `--frames <start-ms>:<end-ms>:<step-ms>`, inclusive of the end when the step lands on it.
@@ -24,7 +25,8 @@ struct FrameGrid: ExpressibleByArgument {
     }
 }
 
-/// Prints what a renderer would get from the public Timeline API, for a human to check.
+/// Prints what a renderer would get from the public Timeline API, for a human to check. Reads
+/// `project.json` when the take has one, so the cuts and zooms are the editor's.
 enum TimelineInspection {
     struct Options {
         var checkDeterminism: Bool
@@ -34,13 +36,14 @@ enum TimelineInspection {
 
     /// Returns false when the determinism check fails.
     static func run(directory: URL, options: Options) async throws -> Bool {
-        let source = try SourceRecording.load(from: directory)
-        let zooms = AutoZoom.track(for: source)
-        let timeline = Timeline(source: source, zooms: zooms)
+        let project = try Project.open(directory)
+        let source = project.source
+        let zooms = project.edits.zooms
+        let timeline = project.timeline
 
         print(String(
-            format: "timeline: %.0fx%.0f px, duration %@ ms", source.frameSize.width, source.frameSize.height,
-            ms(source.duration)))
+            format: "timeline: %.0fx%.0f px, duration %@ ms, edits %@", source.frameSize.width, source.frameSize.height,
+            ms(source.duration), project.origin == .saved ? "from project.json" : "generated"))
         for warning in source.loadWarnings { print("load warning: \(warning)") }
         print("buttons: \(source.buttons.count)")
         for button in source.buttons {
@@ -53,8 +56,18 @@ enum TimelineInspection {
                 segment.scale, String(describing: segment.focus)))
         }
 
+        let cuts = project.edits.cuts.cuts
+        print("cuts: \(cuts.count)")
+        for cut in cuts {
+            print("  \(ms(cut.range.start)) ms to \(ms(cut.range.end)) ms")
+        }
+        print("kept: \(timeline.map.segments.count) span(s), output duration \(ms(timeline.map.duration)) ms")
+        for segment in timeline.map.segments {
+            print("  recording \(ms(segment.source.start)) ms to \(ms(segment.source.end)) ms -> output \(ms(segment.outputStart)) ms")
+        }
+
         if let frames = options.frames {
-            print("frames: t ms | camera scale, center, viewport origin+size | cursor position, opacity, pressed")
+            print("frames: output t ms | camera scale, center, viewport origin+size | cursor position, opacity, pressed")
             for t in frames.times {
                 let frame = timeline.frame(at: t)
                 let camera = frame.camera
