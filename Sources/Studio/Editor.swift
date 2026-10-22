@@ -4,12 +4,19 @@ import Observation
 import Render
 import Timeline
 
+/// What the strip has selected: a zoom block or a removed region. Delete removes the zoom or
+/// restores the cut.
+public enum Selection: Hashable, Sendable {
+    case zoom(ZoomSegment.ID)
+    case cut(Cut.ID)
+}
+
 @MainActor
 @Observable
 public final class Editor {
     public private(set) var project: Project
     public let preview: PreviewPlayer
-    public var selection: ZoomSegment.ID?
+    public var selection: Selection?
     public private(set) var playhead: Playhead = .start
     public private(set) var isPlaying = false
     public private(set) var saveState: SaveState = .saved
@@ -28,6 +35,13 @@ public final class Editor {
         case saved
         case pending
         case failed(String)
+    }
+
+    /// What one step of a drag shows: the edited take landing somewhere, or the uncut take at the
+    /// handle, for a trim or cut-edge drag.
+    private enum PreviewStep {
+        case edited(landingAt: RecordingTime?)
+        case source(at: RecordingTime)
     }
 
     init(project: Project) async throws(RenderError) {
@@ -51,6 +65,11 @@ public final class Editor {
     public var outputDuration: OutputTime { project.timeline.map.duration }
     public var takeName: String { project.source.directory.deletingPathExtension().lastPathComponent }
     public var zooms: [ZoomSegment] { project.edits.zooms.segments }
+    public var cuts: [Cut] { project.edits.cuts.cuts }
+    /// Where the take begins and ends after trimming, for the trim handles.
+    public var trimmed: ClosedRange<RecordingTime> { project.edits.cuts.trimmed(within: duration) }
+
+    private var oneFrame: RecordingTime { .seconds(1 / Double(project.edits.format.frameRate.rawValue)) }
 
     public func apply(_ actionName: String, _ change: (inout Edits) -> Void) {
         endDrag()
@@ -67,30 +86,48 @@ public final class Editor {
     /// One step of a continuous gesture (dragging a zoom, its edge, or a slider). Updates the
     /// preview live and records nothing until `endDrag`.
     public func drag(_ actionName: String, _ change: (inout Edits) -> Void) {
+        drag(actionName, showing: .edited(landingAt: nil), change)
+    }
+
+    private func drag(_ actionName: String, showing step: PreviewStep, _ change: (inout Edits) -> Void) {
+        if openDrag == nil { openDrag = (project.edits, actionName) }
         var edits = project.edits
         change(&edits)
-        guard edits != project.edits else { return }
-        if openDrag == nil { openDrag = (project.edits, actionName) }
-        project.edits = edits
-        saveState = .pending
-        preview.show(project)
+        if edits != project.edits {
+            project.edits = edits
+            saveState = .pending
+        }
+        switch step {
+        case .edited(let landing): preview.show(project, landingAt: landing)
+        case .source(let t): preview.showSource(at: t)
+        }
     }
 
     public func endDrag() {
         guard let (before, actionName) = openDrag else { return }
         openDrag = nil
-        guard project.edits != before else { return }
+        // Returns from the uncut take after a trim or cut-edge drag; a no-op for the rest.
+        preview.show(project)
+        guard project.edits != before else {
+            if saveState == .pending, saveTask == nil { saveState = .saved }
+            return
+        }
         registerUndo(restoring: before, actionName: actionName)
         scheduleSave()
     }
 
     public func deleteZoom(_ id: ZoomSegment.ID) {
         apply("Delete Zoom") { $0.zooms = $0.zooms.removing(id) }
-        if selection == id { selection = nil }
+        if selection == .zoom(id) { selection = nil }
     }
 
+    /// Delete key: removes the selected zoom, or restores the selected cut.
     public func deleteSelection() {
-        if let selection { deleteZoom(selection) }
+        switch selection {
+        case .zoom(let id): deleteZoom(id)
+        case .cut(let id): restoreCut(id)
+        case nil: break
+        }
     }
 
     public func moveZoom(_ id: ZoomSegment.ID, toStart start: RecordingTime) {
@@ -116,7 +153,7 @@ public final class Editor {
             around: t, length: Self.newZoomLength, scale: Self.newZoomScale, within: duration)
         else { return }
         apply("Add Zoom") { $0.zooms = track }
-        selection = id
+        selection = .zoom(id)
     }
 
     public func regenerateZooms() {
@@ -124,6 +161,53 @@ public final class Editor {
             $0.zooms = AutoZoom.track(for: source, settings: $0.settings.autoZoom)
         }
         selection = nil
+    }
+
+    /// One step of a drag across the strip's ruler, from where it started to where the pointer is.
+    /// Computed from the cuts before the drag began, so dragging back shrinks the new cut instead
+    /// of leaving the union of every step. The preview shows the frame just after the cut.
+    public func markCut(from start: RecordingTime, to end: RecordingTime) {
+        let base = openDrag?.before.cuts ?? project.edits.cuts
+        guard let range = TimeRange(start: min(start, end), end: max(start, end)),
+            let (cuts, id) = base.cutting(range, within: duration)
+        else { return }
+        pause()
+        drag("Cut", showing: .edited(landingAt: range.end)) { $0.cuts = cuts }
+        selection = .cut(id)
+    }
+
+    /// One step of a trim-handle drag. The preview shows the uncut take at the new first frame
+    /// (start) or last frame (end).
+    public func trim(_ end: Cuts.End, to t: RecordingTime) {
+        let cuts = project.edits.cuts.trimming(end, to: t, within: duration)
+        let trimmed = cuts.trimmed(within: duration)
+        let shown = end == .start ? trimmed.lowerBound : max(trimmed.upperBound - oneFrame, .zero)
+        pause()
+        drag("Trim", showing: .source(at: shown)) { $0.cuts = cuts }
+    }
+
+    /// `[` and `]`: trim the start or the end to the playhead.
+    public func trimToPlayhead(_ end: Cuts.End) {
+        let t = playhead.recording
+        let duration = duration
+        apply("Trim") { $0.cuts = $0.cuts.trimming(end, to: t, within: duration) }
+    }
+
+    /// One step of a cut-edge drag. The preview shows the uncut take at the last kept frame before
+    /// the cut for its start edge and the first kept frame after it for its end edge: the two
+    /// frames the viewer sees meet.
+    public func resizeCut(_ id: Cut.ID, edge: Cuts.End, to t: RecordingTime) {
+        let cuts = project.edits.cuts.resizing(id, edge: edge, to: t, within: duration)
+        guard let cut = cuts.cuts.first(where: { $0.id == id }) else { return }
+        let shown = edge == .start ? max(cut.range.start - oneFrame, .zero) : cut.range.end
+        pause()
+        drag("Resize Cut", showing: .source(at: shown)) { $0.cuts = cuts }
+    }
+
+    /// Puts the cut's time back. Undo cuts it again.
+    public func restoreCut(_ id: Cut.ID) {
+        apply("Restore Cut") { $0.cuts = $0.cuts.restoring(id) }
+        if selection == .cut(id) { selection = nil }
     }
 
     public func togglePlayback() {
@@ -178,7 +262,11 @@ public final class Editor {
         openDrag = nil
         let current = project.edits
         project.edits = edits
-        if let selection, !edits.zooms.segments.contains(where: { $0.id == selection }) { self.selection = nil }
+        switch selection {
+        case .zoom(let id) where !edits.zooms.segments.contains(where: { $0.id == id }): selection = nil
+        case .cut(let id) where !edits.cuts.cuts.contains(where: { $0.id == id }): selection = nil
+        default: break
+        }
         registerUndo(restoring: current, actionName: actionName)
         preview.show(project)
         scheduleSave()

@@ -297,7 +297,7 @@ struct EditorSpec {
         editor.endDrag()
         #expect(editor.zooms[0].range.start == .zero)
 
-        editor.selection = first.id
+        editor.selection = .zoom(first.id)
         editor.deleteSelection()
         #expect(editor.zooms.count == 1)
         #expect(editor.selection == nil)
@@ -307,7 +307,7 @@ struct EditorSpec {
         #expect(editor.zooms.count == 1)
         editor.addZoom(at: .seconds(2))
         #expect(editor.zooms.count == 2)
-        #expect(editor.selection == editor.zooms[0].id)
+        #expect(editor.selection == .zoom(editor.zooms[0].id))
         #expect(editor.zooms[0].range.duration == .seconds(3))
     }
 

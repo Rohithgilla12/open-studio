@@ -20,7 +20,7 @@ struct EditorView: View {
             Divider()
             VStack(spacing: 10) {
                 TransportBar(editor: editor)
-                ZoomStrip(editor: editor)
+                TimelineStrip(editor: editor)
                 ZoomActions(editor: editor)
             }
             .padding(16)
@@ -129,14 +129,26 @@ struct ZoomActions: View {
             Button("Add Zoom", systemImage: "plus.magnifyingglass") { editor.addZoom(at: editor.playhead.recording) }
                 .disabled(!editor.canAddZoom(at: editor.playhead.recording))
                 .help("Add a zoom centred on the playhead")
-            Button("Delete Zoom", systemImage: "trash") { editor.deleteSelection() }
+            Button(deleteTitle, systemImage: "trash") { editor.deleteSelection() }
                 .keyboardShortcut(.delete, modifiers: [])
                 .disabled(editor.selection == nil)
+                .help("Delete the selected zoom, or restore the selected cut")
+            Button("Trim Start", systemImage: "arrow.right.to.line") { editor.trimToPlayhead(.start) }
+                .keyboardShortcut("[", modifiers: [])
+                .help("Trim the start to the playhead ([)")
+            Button("Trim End", systemImage: "arrow.left.to.line") { editor.trimToPlayhead(.end) }
+                .keyboardShortcut("]", modifiers: [])
+                .help("Trim the end to the playhead (])")
             Spacer()
             Button("Regenerate Zooms", systemImage: "wand.and.stars") { editor.regenerateZooms() }
                 .help("Replace every zoom with automatic ones from the clicks")
         }
         .controlSize(.small)
+    }
+
+    private var deleteTitle: String {
+        if case .cut = editor.selection { return "Restore Cut" }
+        return "Delete Zoom"
     }
 }
 
@@ -173,7 +185,7 @@ struct StyleInspector: View {
                 }
             }
             Section("Zoom") {
-                if let id = editor.selection, let segment = editor.zooms.first(where: { $0.id == id }) {
+                if case .zoom(let id)? = editor.selection, let segment = editor.zooms.first(where: { $0.id == id }) {
                     LabeledContent("Scale") {
                         Slider(
                             value: Binding(
