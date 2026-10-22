@@ -8,7 +8,7 @@ This repository has the recording, timeline, and rendering core, a command-line 
 - **Timeline** reads a recording and works out the automatic zooms from your clicks. It then gives the camera position, zoom, and cursor state for any frame. Its answers are pure functions of time, so a renderer can ask from any thread in any order and get identical results.
 - **Render** draws each output frame: the screen zoomed to the camera, the cursor redrawn on top, a background with padding, rounded corners, and a shadow, and the recorded camera in a corner. Preview, export, and stills share one compositor, so they produce the same pixels.
 - **osrec** is a command-line harness that drives these modules from a terminal.
-- **Studio** is the app: a take library, recording of the entire screen, an area, or a window, a zoom editor with a live preview, and export. The Xcode project in `App/` wraps it in a bundle.
+- **Studio** is the app: a take library, recording of the entire screen, an area, or a window, an editor with a live preview for zooms, trims, and cuts, and export. The Xcode project in `App/` wraps it in a bundle.
 
 ## Requirements
 
@@ -60,10 +60,10 @@ Export a take to MP4, or a single frame to PNG:
 ```sh
 .build/release/osrec export <dir>.osrec --out demo.mp4                 # 1080p60 HEVC with automatic zooms
 .build/release/osrec export <dir>.osrec --out demo-4k.mp4 --size uhd2160
-.build/release/osrec export <dir>.osrec --still 4200                   # the frame at 4.2 s
+.build/release/osrec export <dir>.osrec --still 4200                   # the frame 4.2 s into the exported movie
 ```
 
-`export` uses `<dir>.osrec/project.json` when it exists, so it renders the app's edits. `--auto-zooms` ignores it.
+`export` uses `<dir>.osrec/project.json` when it exists, so it renders the app's edits, including trims and cuts. `--auto-zooms` ignores it. `--still` takes a time in the exported movie, so with cuts it is not the time in the recording; `inspect --timeline` prints the saved cuts, the kept spans with where each lands in the output, and the output duration.
 
 Without `--display`, `osrec` records the main display. Auto-zoom only reacts to clicks on the recorded display.
 
@@ -102,6 +102,10 @@ The recorder still captures the whole display. The area is stored in `recording.
 
 In the app, choose Entire Screen, Area, or Window on Home. For Area, drag a rectangle on the overlay, then press Return or Record. Press Escape to cancel. The app remembers the last area for each display.
 
+### Trim and cut
+
+In the editor, drag the handles at either end of the strip to trim the take, or drag across the ruler above the zooms to remove a range from the middle. Press `[` or `]` to trim the start or end to the playhead. A removed range stays on the strip as a hatched region: click it and press Delete to restore it, or drag its edges. Zooms are kept in recording time, so they never move when you cut, and a zoom inside a cut has no effect until the cut is restored. The strip shows the whole recording; the transport shows the time and length of the exported movie. Every kept span is at least 200 ms, and the audio fades out and back in over 30 ms either side of a cut so it never clicks.
+
 To stop a recording early, press Ctrl-C. If the recorder was killed instead, run `osrec recover <dir>.osrec` to finish the take. It's safe to run it more than once.
 
 `osrec inspect --check-determinism` reads every frame forward, in reverse, shuffled, and from several threads at once. It exits non-zero if any answer differs.
@@ -119,10 +123,10 @@ camera.mov         fragmented QuickTime, only when recorded with --camera
 events.ndjson      append-only input and cursor events
 cursors/<id>.png   cursor images, named by content hash
 .lock              held while recording
-project.json       edits (zooms, style, audio levels, output format), written by the editor; the recorder never touches it
+project.json       edits (zooms, cuts, style, audio levels, output format), written by the editor; the recorder never touches it
 ```
 
-Every timestamp is in integer microseconds from the first complete video frame. Positions are in screen-video pixels, including the area. A manifest with system audio is format version 4, one with a camera but no system audio is version 3, and one with only an area is version 2. One with none of them is still written as version 1, so older builds can read it. [`recording-directory-example.md`](docs/design/accepted/recording-directory-example.md) shows a full example.
+Every timestamp is in integer microseconds from the first complete video frame. Positions are in screen-video pixels, including the area. A manifest with system audio is format version 4, one with a camera but no system audio is version 3, and one with only an area is version 2. One with none of them is still written as version 1, so older builds can read it. `project.json` follows the same rule: it is version 1 until the take has cuts, which make it version 2 because a build without cuts would export the removed ranges. [`recording-directory-example.md`](docs/design/accepted/recording-directory-example.md) shows a full example.
 
 ## Layout
 
@@ -138,7 +142,7 @@ docs/design/              brief, accepted design and rationale, rejected candida
 
 ## Design
 
-[`docs/design/accepted/rationale.md`](docs/design/accepted/rationale.md) explains the main decisions. [`docs/design/capture-targets/rationale.md`](docs/design/capture-targets/rationale.md) explains areas and windows, [`docs/design/camera/rationale.md`](docs/design/camera/rationale.md) explains the camera, and [`docs/design/system-audio/rationale.md`](docs/design/system-audio/rationale.md) explains system audio and the mix. These include running capture in-process instead of in a helper, using fragmented `.mov` for crash safety, and solving springs exactly instead of replaying them. The same document records what the experiments measured.
+[`docs/design/accepted/rationale.md`](docs/design/accepted/rationale.md) explains the main decisions. [`docs/design/capture-targets/rationale.md`](docs/design/capture-targets/rationale.md) explains areas and windows, [`docs/design/camera/rationale.md`](docs/design/camera/rationale.md) explains the camera, [`docs/design/system-audio/rationale.md`](docs/design/system-audio/rationale.md) explains system audio and the mix, and [`docs/design/cuts/rationale.md`](docs/design/cuts/rationale.md) explains trims and cuts: one time map between the recording's clock and the output's, with the springs solved over output time. These include running capture in-process instead of in a helper, using fragmented `.mov` for crash safety, and solving springs exactly instead of replaying them. The same document records what the experiments measured.
 
 ## Licence
 

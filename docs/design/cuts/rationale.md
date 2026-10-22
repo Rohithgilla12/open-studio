@@ -277,7 +277,19 @@ All three converged on most of the shape: a separate `OutputTime` type, cuts sto
 
 ## Implementation reconciliation
 
-Nothing yet.
+What the implementation (D11, branch head after this section) does differently from the text above, and why. Every item is a change in detail, not in shape; the file format and every signature other layers call are as designed.
+
+- **`CutsError.overlap(UUID, UUID)` was added.** The sketch folded overlapping cuts into `keptTooShort`, but the file-validation rule lists overlap as its own case, and `ZoomTrackError.overlap` is the nearest precedent. Touching cuts (gap 0) are `keptTooShort(after:)`, since the kept span between them would be empty.
+- **`Retiming` takes the `Cuts` as well as the map.** "Inside a cut" is decided with `cuts.cut(containing:)`, not `map.output(at:) == nil`, because the map's half-open spans also return nil for a change at exactly the recording's end, and dropping that change would change today's tracks through `rescaleShortIntervals`. Only changes from inside the head trim fold into the initial value; a change at exactly the trim's end springs in, as a change at 0 does today.
+- **The cursor snap is a `snap` flag on `TargetChange`.** `SpringTrack` sets the knot's position to its target and its velocity to zero when the flag is set. `Retiming` appends one snapped change per join, on the target of the last change at or before the recording instant the join shows, sorted after any change at the same time.
+- **Typing and idle intervals are computed in integer microseconds, not seconds.** The output clock's instants come from `map.output(at:)`; computing `last + window` in `Double` seconds differed by one ulp from today's integer sum and broke the bit-identity check.
+- **`MovieComposition.duration` is the asset's duration, capped at `map.duration`.** For a recovered take whose screen movie is a frame short of the manifest, the composition is that much shorter, as today. On every other take it equals `map.duration`.
+- **`RecordingTime(mediaTime:)` exists beside `.mediaTime`.** `SourceMedia` reads each track's end from its asset, and that is a recording-clock read. The deleted bridge is the composition-time one.
+- **The preview's `isPlaying` is derived from the player's rate**, not stored, and `surface` is the `AVPlayerLayer` itself. `item` and `player` stay internal for the tests.
+- **`Editor.drag` chooses what the preview shows through a private `PreviewStep`**: the edited project with a landing, or the uncut source at the handle. `endDrag` always calls `show(project)` so a gesture that changed nothing still leaves the uncut item. `openDrag` is set on a gesture's first step even when that step changes nothing, for the same reason.
+- **Audible-only mixes and ramps.** A muted source gets ramps from 0 to 0; harmless, and it keeps one code path.
+- **The no-cuts bit-identity test pins a hash of main's frames from a debug build.** An `-O` build of the same code on main differs at the last bit in 9 of 2880 frames of the committed fixture, so the pin is for the build `swift test` uses. The determinism check (`osrec inspect --check-determinism`) still passes within either build.
+- **Measured on the real take `20261013-153859.osrec`** (5 s, head trim [0, 0.8 s), cut [2 s, 3 s)): the exported MP4 is 3.200 s with 192 frames at 60 fps and 3.199979 s of audio; the stills at output 1180 ms and 1220 ms are byte-identical to the uncut take's stills at 1980 ms and 3020 ms; `inspect --check-determinism` passes over the cut timeline (193 frames, 59 distinct). Open question 1 (a blank frame during the swap) and 2 (how `AVPlayer` renders the ramps) remain unmeasured in the app.
 
 ## Open questions and risks
 
