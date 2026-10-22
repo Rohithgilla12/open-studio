@@ -80,10 +80,11 @@ struct Retiming: Sendable {
 
     /// `changes` sorted by recording time in, sorted by output time out.
     ///
-    /// - A change inside a cut lands on the cut's join. A run of them reduces to its last, and
-    ///   that one is dropped when it repeats the change already in effect, so a zoom wholly inside
-    ///   a cut leaves no knot at all and `rescaleShortIntervals` sees the same neighbours as if
-    ///   the zoom had been deleted.
+    /// - A change inside a cut lands on the cut's join, marked `collapsed`. A run of them reduces
+    ///   to its last, and that one is dropped when it repeats the change already in effect, so a
+    ///   zoom wholly inside a cut leaves no knot at all and `rescaleShortIntervals` sees the same
+    ///   neighbours as if the zoom had been deleted. It is also dropped when the next kept change
+    ///   puts the target back before its spring would have settled.
     /// - A change inside the head trim folds into the initial value, so the output starts at rest
     ///   on the target in effect where the take now begins instead of springing in from wherever
     ///   the recording started.
@@ -117,6 +118,7 @@ struct Retiming: Sendable {
             moved.time = map.output(collapsing: r).seconds
             if cuts.cut(containing: r) != nil {
                 if let pending = collapsed, pending.time != moved.time { flush() }
+                moved.collapsed = true
                 collapsed = moved
             } else {
                 flush()
@@ -124,6 +126,28 @@ struct Retiming: Sendable {
             }
         }
         flush()
+
+        // A zoom-out moved onto the join with the next zoom-in landing before it could settle would
+        // bounce the camera at a cut the user made to bring the two zooms together, so the
+        // collapsed change goes when the kept one after it restores the target it replaced. The
+        // restorer goes with it when it would then only restate the change in effect, because a
+        // restatement still ends the interval `rescaleShortIntervals` measures.
+        var index = 0
+        while index + 1 < kept.count {
+            let change = kept[index]
+            let previous = index == 0 ? nil : kept[index - 1]
+            let restorer = kept[index + 1]
+            guard change.collapsed, restorer.target == previous?.target ?? initial,
+                restorer.time - change.time < change.spring.settleTime()
+            else {
+                index += 1
+                continue
+            }
+            kept.remove(at: index)
+            if let previous, restorer.spring == previous.spring, !restorer.snap {
+                kept.remove(at: index)
+            }
+        }
 
         if snapsAtJoins, !map.joins.isEmpty {
             for join in map.joins {

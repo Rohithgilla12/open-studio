@@ -36,20 +36,12 @@ struct CursorTrack: Sendable {
         frameSize = source.frameSize
         images = source.cursorChanges
 
-        let steady = ShakeFilter.apply(source.pointer, threshold: settings.shakeThreshold)
         if let spring = settings.smoothing.spring {
-            let buttonTimes = Set(source.buttons.map(\.time))
-            let samples = Thinning.apply(steady, distance: settings.thinningDistance) { index in
-                let isLast = index == steady.count - 1
-                let restsHere = !isLast && steady[index + 1].time - steady[index].time > Self.restGap
-                return isLast || restsHere || buttonTimes.contains(steady[index].time)
-            }
-            position = .spring(Self.positionSpring(
-                samples: samples, downs: source.buttons.filter { $0.edge == .down }.map(\.time),
-                frameCenter: Vector2(x: source.frameSize.width / 2, y: source.frameSize.height / 2),
-                spring: spring, settings: settings, retiming: retiming))
+            let (initial, changes) = Self.positionChanges(source: source, spring: spring, settings: settings)
+            let retimed = retiming.apply(initial: initial, changes, snapsAtJoins: true)
+            position = .spring(SpringTrack(initial: retimed.initial, changes: retimed.changes, rescaleShortIntervals: false))
         } else {
-            position = .held(steady)
+            position = .held(ShakeFilter.apply(source.pointer, threshold: settings.shakeThreshold))
         }
 
         presses = Self.pressIntervals(source.buttons, end: source.duration)
@@ -73,10 +65,21 @@ struct CursorTrack: Sendable {
     /// A pause longer than this marks a sample the pointer rested on, which thinning must keep.
     static let restGap = RecordingTime.milliseconds(100)
 
-    static func positionSpring(
-        samples: [PointerSample], downs: [RecordingTime], frameCenter: Vector2, spring: Spring, settings: CursorSettings,
-        retiming: Retiming
-    ) -> SpringTrack<Vector2> {
+    /// The spring targets the pointer asks for, in recording seconds, before any cut moves them:
+    /// the shake-filtered, thinned samples, with the click spring in effect for the lead before each
+    /// mouse-down.
+    static func positionChanges(
+        source: SourceRecording, spring: Spring, settings: CursorSettings
+    ) -> (initial: Vector2, changes: [TargetChange<Vector2>]) {
+        let steady = ShakeFilter.apply(source.pointer, threshold: settings.shakeThreshold)
+        let buttonTimes = Set(source.buttons.map(\.time))
+        let samples = Thinning.apply(steady, distance: settings.thinningDistance) { index in
+            let isLast = index == steady.count - 1
+            let restsHere = !isLast && steady[index + 1].time - steady[index].time > Self.restGap
+            return isLast || restsHere || buttonTimes.contains(steady[index].time)
+        }
+        let downs = source.buttons.filter { $0.edge == .down }.map(\.time)
+        let frameCenter = Vector2(x: source.frameSize.width / 2, y: source.frameSize.height / 2)
         var changes = samples.map { TargetChange(time: $0.time.seconds, target: Vector2($0.position), spring: spring) }
         // The rapid spring takes over for `clickSpringLead` before each mouse-down so the cursor lands on
         // the click; the down sample itself switches back.
@@ -98,8 +101,7 @@ struct CursorTrack: Sendable {
             }
         }
         let initial = samples.first.map { Vector2($0.position) } ?? frameCenter
-        let retimed = retiming.apply(initial: initial, changes, snapsAtJoins: true)
-        return SpringTrack(initial: retimed.initial, changes: retimed.changes, rescaleShortIntervals: false)
+        return (initial, changes)
     }
 
     /// Pairs each button's downs with its ups, runs an unmatched down to `end`, and unions across

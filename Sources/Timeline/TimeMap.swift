@@ -13,8 +13,6 @@ public struct TimeMap: Sendable, Hashable {
         public let source: TimeRange
         /// Where `source.start` lands in output time.
         public let outputStart: OutputTime
-        // A speed change adds `rate` here, defaulting to 1. The three conversions absorb it; no
-        // caller changes, and the composition builder scales each segment it inserts.
         public var outputEnd: OutputTime { outputStart + OutputTime(microseconds: source.duration.microseconds) }
     }
 

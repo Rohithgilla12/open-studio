@@ -23,6 +23,9 @@ struct SpringTrack<Value: SpringValue>: Sendable {
 
     /// `changes` must be sorted by time. The spring starts at rest on `initial` at t = 0. Several
     /// changes at one time collapse to the last, so binary search never sees duplicate times.
+    /// `rescaleShortIntervals` stiffens a spring whose next change comes before it would settle,
+    /// except on either side of a `collapsed` change: squeezing a zoom-out into the milliseconds a
+    /// cut left before the next zoom-in flashed the camera to 1x and back at the join.
     init(initial: Value, changes: [TargetChange<Value>], rescaleShortIntervals: Bool) {
         var distinct: [TargetChange<Value>] = []
         distinct.reserveCapacity(changes.count)
@@ -42,7 +45,7 @@ struct SpringTrack<Value: SpringValue>: Sendable {
             let (position, velocity) = change.snap
                 ? (change.target, Value.zero) : current.response.advance(from: current, by: change.time - current.time)
             var spring = change.spring
-            if rescaleShortIntervals, index + 1 < distinct.count {
+            if rescaleShortIntervals, index + 1 < distinct.count, !change.collapsed, !distinct[index + 1].collapsed {
                 spring = spring.rescaled(toSettleWithin: distinct[index + 1].time - change.time)
             }
             current = Knot(
@@ -64,13 +67,16 @@ struct SpringTrack<Value: SpringValue>: Sendable {
     }
 }
 
-struct TargetChange<Value: SpringValue>: Sendable {
+struct TargetChange<Value: SpringValue>: Sendable, Equatable {
     var time: Double
     var target: Value
     var spring: Spring
     /// The spring comes to rest on `target` here instead of carrying its state across: the cursor
     /// at a join.
     var snap = false
+    /// Moved onto a join from inside a cut. Its distance to the changes either side is the cut's
+    /// doing, not the user's timing, so `rescaleShortIntervals` leaves those intervals alone.
+    var collapsed = false
 }
 
 /// The closed-form step response of one spring, with everything that does not depend on dt

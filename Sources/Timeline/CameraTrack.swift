@@ -4,8 +4,19 @@ struct CameraTrack: Sendable {
     let center: SpringTrack<Vector2>
 
     init(source: SourceRecording, zooms: ZoomTrack, settings: CameraSettings, retiming: Retiming) {
+        visibleRect = source.visibleRect
+        let changes = Self.targetChanges(source: source, zooms: zooms, settings: settings)
+        let retimedScale = retiming.apply(initial: 1, changes.scale)
+        let retimedCenter = retiming.apply(initial: changes.frameCenter, changes.center)
+        scale = SpringTrack(initial: retimedScale.initial, changes: retimedScale.changes, rescaleShortIntervals: settings.rescaleShortIntervals)
+        center = SpringTrack(initial: retimedCenter.initial, changes: retimedCenter.changes, rescaleShortIntervals: settings.rescaleShortIntervals)
+    }
+
+    /// The spring targets the zooms ask for, in recording seconds, before any cut moves them.
+    static func targetChanges(
+        source: SourceRecording, zooms: ZoomTrack, settings: CameraSettings
+    ) -> (scale: [TargetChange<Double>], center: [TargetChange<Vector2>], frameCenter: Vector2) {
         let bounds = source.visibleRect
-        visibleRect = bounds
         let frameCenter = Vector2(bounds.center)
         let segments = zooms.segments
         let zoomInTimes = segments.map { segment in
@@ -51,10 +62,7 @@ struct CameraTrack: Sendable {
             }
         }
 
-        let retimedScale = retiming.apply(initial: 1, scaleChanges)
-        let retimedCenter = retiming.apply(initial: frameCenter, centerChanges)
-        scale = SpringTrack(initial: retimedScale.initial, changes: retimedScale.changes, rescaleShortIntervals: settings.rescaleShortIntervals)
-        center = SpringTrack(initial: retimedCenter.initial, changes: retimedCenter.changes, rescaleShortIntervals: settings.rescaleShortIntervals)
+        return (scaleChanges, centerChanges, frameCenter)
     }
 
     static func visibleSamples(of source: SourceRecording, from start: RecordingTime, until end: RecordingTime) -> [PointerSample] {

@@ -24,9 +24,11 @@ struct TimelineCutSpec {
     }
 
     /// Catches any change to today's frames with no cuts. The hashes were printed by main's own
-    /// Timeline (commit 8e128cb, debug build, as `swift test` runs) over the committed fixture at
-    /// 240 Hz, one per settings variant. An -O build of the same code differs at the last bit in 9
-    /// of 2880 frames, so this pins the debug build only.
+    /// Timeline (commit 8e128cb, debug build, as `swift test` runs, Apple Swift 6.4 /
+    /// swiftlang-6.4.0.34.1 on arm64) over the committed fixture at 240 Hz, one per settings
+    /// variant. An -O build of the same code differs at the last bit in 9 of 2880 frames, so this
+    /// pins that toolchain's debug build only; `noCutsLeavesEveryTargetChangeWhereItWas` is the
+    /// compiler-independent half.
     @Test(arguments: [
         ("default", TimelineSettings.default, UInt64(0x056d_d74c_ad5a_03bd)),
         ("observed", {
@@ -154,5 +156,70 @@ struct TimelineCutSpec {
         #expect(uncut.frame(at: .seconds(3)).cursor.opacity == 0)
         let cut = try Self.timeline(source, zooms: [], cuts: [Cut(range: range(2, 3))])
         #expect(cut.frame(at: .seconds(2.2)).cursor.opacity == 1, "only the keys at 1.0 and 4.0 s remain, 2 s apart")
+    }
+}
+
+extension TimelineCutSpec {
+    /// Catches a camera flash at a join: the zoom-out collapsed onto the join and the next zoom-in
+    /// milliseconds after it must not be squeezed to settle in that gap, and nor must a
+    /// follow-centre change a few ms before the join squeeze into the gap before it.
+    @Test(arguments: [
+        ("zoom-in 50 ms after the join", [(0.0, 300.0, 200.0)], [(2.0, 5.0), (6.05, 8.0)], (4.0, 6.0)),
+        ("follow-centre 10 ms after the join", [(0.0, 300.0, 200.0), (6.01, 900.0, 700.0)], [(2.0, 5.0), (6.01, 8.0)], (4.0, 6.0)),
+        ("follow-centre 10 ms before the join", [(0.0, 300.0, 200.0), (4.0, 900.0, 700.0)], [(2.0, 5.0), (6.05, 8.0)], (4.01, 6.0)),
+    ])
+    func aChangeCollapsedOntoAJoinIsNotSqueezedAgainstItsNeighbours(
+        name: String, pointer: [(Double, Double, Double)], zooms: [(Double, Double)], cut: (Double, Double)
+    ) throws {
+        let source = try Synthetic.source(duration: 12, frame: Self.frame, pointer: pointer)
+        let segments = zooms.map { Self.zoom($0.0, $0.1, focus: .followPointer) }
+        let with = try Self.timeline(source, zooms: segments, cuts: [Cut(range: range(cut.0, cut.1))])
+        let without = try Self.timeline(source, zooms: segments, cuts: [])
+        let join = OutputTime.seconds(cut.0)
+        #expect(with.map.joins == [join])
+
+        func peaks(_ timeline: Timeline, _ window: ClosedRange<Double>) -> (scale: Double, scaleSpeed: Double, centerSpeed: Double) {
+            var lowest = Double.infinity, scaleSpeed = 0.0, centerSpeed = 0.0
+            for t in stride(from: window.lowerBound, through: window.upperBound, by: 1 / 240) {
+                let camera = timeline.frame(at: .seconds(t)).camera
+                lowest = min(lowest, camera.scale)
+                scaleSpeed = max(scaleSpeed, abs(camera.scaleVelocity))
+                centerSpeed = max(centerSpeed, (camera.centerVelocity.dx * camera.centerVelocity.dx + camera.centerVelocity.dy * camera.centerVelocity.dy).squareRoot())
+            }
+            return (lowest, scaleSpeed, centerSpeed)
+        }
+        let unsqueezed = peaks(without, 0...without.map.duration.seconds)
+        let across = peaks(with, (join.seconds - 0.1)...(join.seconds + 0.3))
+        #expect(across.scale >= 1.8, "\(name): the camera stays near 2x through the join, lowest \(across.scale)")
+        #expect(across.scaleSpeed <= unsqueezed.scaleSpeed * 1.25, "\(name): scale speed \(across.scaleSpeed) against the unsqueezed spring's \(unsqueezed.scaleSpeed)")
+        #expect(across.centerSpeed <= unsqueezed.centerSpeed * 1.25, "\(name): centre speed \(across.centerSpeed) against the unsqueezed spring's \(unsqueezed.centerSpeed)")
+    }
+
+    /// Catches `Retiming` touching a change when there is nothing to retime, independently of the
+    /// compiler the hash above was pinned on: with no cuts the camera and cursor builders' changes
+    /// come back exactly as they went in.
+    @Test(arguments: ["default", "observed", "smooth"])
+    func noCutsLeavesEveryTargetChangeWhereItWas(name: String) throws {
+        var settings = TimelineSettings()
+        switch name {
+        case "observed":
+            settings.camera.leadIn = CameraSettings.observedLeadIn
+            settings.cursor.idleHideAfter = CursorSettings.observedIdleHide
+        case "smooth": settings.cursor.smoothing = .smooth
+        default: break
+        }
+        let source = try SourceRecording.load(from: Fixture.directory(Fixture.fiveClicks))
+        let retiming = Retiming.identity(for: source)
+        let camera = CameraTrack.targetChanges(source: source, zooms: AutoZoom.track(for: source, settings: settings.autoZoom), settings: settings.camera)
+        #expect(camera.scale.count > 2 && camera.center.count > 2)
+        let scale = retiming.apply(initial: 1, camera.scale)
+        #expect(scale.initial == 1 && scale.changes == camera.scale)
+        let center = retiming.apply(initial: camera.frameCenter, camera.center)
+        #expect(center.initial == camera.frameCenter && center.changes == camera.center)
+        let spring = try #require(settings.cursor.smoothing.spring)
+        let cursor = CursorTrack.positionChanges(source: source, spring: spring, settings: settings.cursor)
+        #expect(cursor.changes.count > 10)
+        let position = retiming.apply(initial: cursor.initial, cursor.changes, snapsAtJoins: true)
+        #expect(position.initial == cursor.initial && position.changes == cursor.changes)
     }
 }
