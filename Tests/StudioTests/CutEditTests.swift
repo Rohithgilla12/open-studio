@@ -85,6 +85,33 @@ struct CutEditSpec {
         #expect(try Project.open(library.take).edits.cuts == editor.project.edits.cuts)
     }
 
+    /// Catches `[` and `]` clamping against a cut they pass instead of absorbing it, which left a
+    /// 200 ms kept sliver before the old cut; a handle drag still stops short of the next cut.
+    @Test func trimToPlayheadAbsorbsTheCutsItPassesWhileAHandleDragClamps() async throws {
+        let library = try await Library.make()
+        defer { library.remove() }
+        let (editor, undo) = try await openEditor(library)
+        grouped(undo) { editor.markCut(from: .seconds(2), to: .seconds(4)) }
+        grouped(undo) { editor.endDrag() }
+        editor.scrub(to: .seconds(4.5))
+        grouped(undo) { editor.trimToPlayhead(.start) }
+        #expect(editor.cuts.map(\.range) == [range(0, 4.5)], "the start trim swallows the cut at [2, 4)")
+        #expect(editor.trimmed == RecordingTime.seconds(4.5)...editor.duration)
+        undo.undo()
+        #expect(editor.cuts.map(\.range) == [range(2, 4)])
+
+        grouped(undo) { editor.markCut(from: .seconds(6), to: .seconds(8)) }
+        grouped(undo) { editor.endDrag() }
+        editor.scrub(to: .seconds(5.5))
+        grouped(undo) { editor.trimToPlayhead(.end) }
+        #expect(editor.cuts.map(\.range) == [range(2, 4), range(5.5, 12)], "the end trim swallows the cut at [6, 8)")
+        #expect(editor.trimmed == RecordingTime.zero...RecordingTime.seconds(5.5))
+
+        grouped(undo) { editor.trim(.start, to: .seconds(4.5)) }
+        grouped(undo) { editor.endDrag() }
+        #expect(editor.trimmed.lowerBound == .seconds(1.8), "a handle drag keeps the minimum span before the cut")
+    }
+
     /// Catches the playhead stopping inside a removed region: scrubbing into a cut lands on its end
     /// in both clocks.
     @Test func scrubbingIntoACutLandsOnItsEnd() async throws {

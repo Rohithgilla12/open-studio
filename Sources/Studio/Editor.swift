@@ -186,11 +186,13 @@ public final class Editor {
         drag("Trim", showing: .source(at: shown)) { $0.cuts = cuts }
     }
 
-    /// `[` and `]`: trim the start or the end to the playhead.
+    /// `[` and `]`: trim the start or the end to the playhead. Every cut the trim passes is
+    /// absorbed, where a handle drag stops short of the next cut.
     public func trimToPlayhead(_ end: Cuts.End) {
         let t = playhead.recording
-        let duration = duration
-        apply("Trim") { $0.cuts = $0.cuts.trimming(end, to: t, within: duration) }
+        let removed = end == .start ? TimeRange(start: .zero, end: t) : TimeRange(start: t, end: duration)
+        guard let removed, let (cuts, _) = project.edits.cuts.cutting(removed, within: duration) else { return }
+        apply("Trim") { $0.cuts = cuts }
     }
 
     /// One step of a cut-edge drag. The preview shows the uncut take at the last kept frame before
