@@ -32,7 +32,7 @@ public final class PreviewPlayer {
     private var project: Project
     private var shown = Shown.edited
     private var pending: (project: Project, landing: RecordingTime?)?
-    private var applyTask: Task<Void, Never>?
+    private(set) var applyTask: Task<Void, Never>?
     /// The target of the seek the current item is performing, and the latest target requested
     /// while it was, issued when it lands.
     private var inFlight: OutputTime?
@@ -109,9 +109,12 @@ public final class PreviewPlayer {
             item.audioMix = movie.audioMix(next.edits.audio)
             return
         }
+        let before = shown
         guard let scene = await build(next) else { return }
+        // A drag that began during the build owns the uncut item until its own `show`, which
+        // carries the latest project; swapping it out here would undo the drag's scrub.
+        guard shown == before else { return }
         self.scene = scene
-        // Decided again after the build: a drag that began meanwhile swapped in the uncut item.
         guard needsItem(for: next) else {
             // Measured (accepted-render rationale, open question 1): a paused item composes its
             // current frame again on its own within 300 ms of the swap, so no seek is needed to

@@ -92,12 +92,41 @@ struct CutsPreviewSpec {
         let source = preview.item
         #expect(source !== edited)
         preview.show(project)
-        // The build that was in flight lands first and swaps the uncut item out itself; either
-        // way an edited item ends up here.
         #expect(await Tap(edited).wait(.seconds(10)) { preview.item !== source } != nil, "show returns to an edited item")
         let back = Tap(preview.item)
         try await back.ready(preview.item)
         #expect(await shows(back, frame: 15, at: 0.5, in: preview), "recording 1 s is inside the cut, so it lands on the join")
+        #expect(preview.lastError == nil)
+    }
+
+    /// Catches a build in flight when a drag begins swapping the uncut item back out: the drag
+    /// keeps scrubbing the uncut take until its own `show`, which brings the edit back.
+    @Test func aDragThatBeginsDuringABuildKeepsTheUncutItemUp() async throws {
+        let take = try await CutsRenderSpec.codedTake()
+        defer { try? FileManager.default.removeItem(at: take) }
+        var project = try CutsRenderSpec.project(take, cuts: [CutsRenderSpec.cut(0.5, 1.5)])
+        let preview = try await PreviewPlayer(project: project)
+        let edited = preview.item
+        try await Tap(edited).ready(edited)
+
+        project.edits.style.background = .solid(RGBColor(red: 0, green: 1, blue: 0))
+        preview.show(project)
+        // Lets the edit run as far as its detached scene build before the drag begins.
+        await Task.yield()
+        #expect(preview.applyTask != nil, "the style edit is still building")
+        preview.showSource(at: .seconds(1))
+        let source = preview.item
+        let tap = Tap(source)
+        try await tap.ready(source)
+        #expect(await tap.wait(.seconds(10)) { preview.applyTask == nil } != nil)
+        #expect(preview.item === source, "the finished build leaves the drag's item up")
+        #expect(await shows(tap, frame: 10, at: 1, in: preview), "still on the frame the drag scrubbed to, inside the cut")
+
+        preview.show(project)
+        #expect(await tap.wait(.seconds(10)) { preview.item !== source } != nil, "show returns to the edited item")
+        let back = Tap(preview.item)
+        try await back.ready(preview.item)
+        #expect(await shows(back, frame: 15, at: 0.5, in: preview))
         #expect(preview.lastError == nil)
     }
 
