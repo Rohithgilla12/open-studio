@@ -101,6 +101,29 @@ struct CutsRenderSpec {
         #expect(abs(Double(samples.count) / Signal.rate - 2.5) < 0.05, "the kept 2.5 s of audio")
     }
 
+    /// Catches a trimmed start opening at full volume: what the listener hears is a fade in from
+    /// silence over the join fade, whatever the mix declares at time zero.
+    @Test func aTrimmedStartFadesInFromSilence() async throws {
+        let take = try await Fixture.take(color: (40, 40, 40), seconds: 4)
+        defer { try? FileManager.default.removeItem(at: take) }
+        try await Fixture.addAudio(Fixture.Tone(frequency: 440, from: 0, until: 4, channels: 1), as: .microphone, to: take)
+        let project = try Self.project(take, cuts: [Self.cut(0, 1.0037)])
+        let destination = take.appending(path: "out.mp4", directoryHint: .notDirectory)
+        _ = try await Export.run(project, to: destination)
+        let audio = try await Signal.read(destination)
+        let samples = audio.samples[0]
+        let fade = Int(0.03 * Signal.rate)
+        let loudestOpening = samples[0..<Int(0.003 * Signal.rate)].map(abs).max() ?? 0
+        #expect(loudestOpening < 0.06, "the first 3 ms are near silence, loudest sample \(loudestOpening)")
+        #expect(audio.amplitude(440, in: 0..<0.01) < 0.15, "a third of the way into the fade")
+        #expect(audio.amplitude(440, in: 0.01..<0.02) > 0.1 && audio.amplitude(440, in: 0.01..<0.02) < 0.3, "half way")
+        #expect(abs(audio.amplitude(440, in: 0.05..<0.25) - 0.4) < 0.08, "full after the fade")
+        var largestStep: Float = 0
+        for i in 1..<(fade + 480) { largestStep = max(largestStep, abs(samples[i] - samples[i - 1])) }
+        let naturalStep = Float(2 * Double.pi * 440 * 0.4 / Signal.rate)
+        #expect(largestStep <= naturalStep * 1.25, "no click through the fade, largest step \(largestStep) against the tone's own \(naturalStep)")
+    }
+
     /// Catches a missing ramp: the mix carries a pair at every join and a fade at each trimmed end.
     @Test func theMixRampsAtEveryJoinAndTrimmedEnd() async throws {
         let take = try await Fixture.take(color: (40, 40, 40), seconds: 4)
