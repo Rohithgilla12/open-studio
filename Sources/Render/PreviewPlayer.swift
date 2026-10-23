@@ -51,8 +51,9 @@ public final class PreviewPlayer {
     }
 
     /// Edits arriving faster than this are coalesced, latest wins. A zoom drag emits an edit per
-    /// mouse event; each swap makes AVFoundation drop its rendered-ahead frames.
-    static let editInterval: Duration = .milliseconds(33)
+    /// mouse event; each swap makes AVFoundation drop its rendered-ahead frames. Tests set it to
+    /// zero to land an edit inside the previous swap's landing seek.
+    var editInterval: Duration = .milliseconds(33)
 
     public init(project: Project) async throws(RenderError) {
         media = try await SourceMedia.load(project.source)
@@ -94,7 +95,7 @@ public final class PreviewPlayer {
             while let (next, landing) = pending {
                 pending = nil
                 await apply(next, landing: landing)
-                try? await Task.sleep(for: Self.editInterval)
+                try? await Task.sleep(for: editInterval)
             }
             applyTask = nil
         }

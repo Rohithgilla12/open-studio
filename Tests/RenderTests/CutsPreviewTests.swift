@@ -178,7 +178,9 @@ struct CutsPreviewSpec {
     }
 
     /// Catches an edit reading the player's time while the previous swap's landing seek is still
-    /// in flight: an undo right after a cut lands where the cut had landed, not at 0.
+    /// in flight: an undo right after a cut lands where the cut had landed, not at 0. With no edit
+    /// interval the undo reads the playhead a scene build after the cut's swap, well inside a new
+    /// item's landing seek (55 ms median measured).
     @Test func anEditDuringTheLandingSeekLandsWhereTheLastEditWasHeading() async throws {
         let take = try await CutsRenderSpec.codedTake()
         defer { try? FileManager.default.removeItem(at: take) }
@@ -192,12 +194,13 @@ struct CutsPreviewSpec {
         preview.scrub(to: .seconds(1))
         #expect(await shows(tap, frame: 10, at: 1, in: preview))
 
+        preview.editInterval = .zero
         preview.show(cut)
-        #expect(await tap.wait(.seconds(10)) { preview.item !== first } != nil)
-        let second = preview.item
-        // Inside the landing seek, which the measured first replacement gives 230 ms.
+        // Lets the cut's apply take its edit, so the undo queues behind it instead of replacing it.
+        await Task.yield()
         preview.show(uncut)
-        #expect(await tap.wait(.seconds(10)) { preview.item !== second } != nil, "the undo replaces the item again")
+        #expect(await tap.wait(.seconds(10)) { preview.applyTask == nil } != nil)
+        #expect(preview.item !== first, "the cut and the undo each replaced the item")
         let back = Tap(preview.item)
         try await back.ready(preview.item)
         #expect(await shows(back, frame: 15, at: 1.5, in: preview), "the cut landed on the join, recording 1.5 s; the undo stays there")
