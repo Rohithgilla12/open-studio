@@ -144,7 +144,7 @@ struct Retiming: Sendable {
                 continue
             }
             kept.remove(at: index)
-            if let previous, restorer.spring == previous.spring, !restorer.snap {
+            if let previous, restorer.spring == previous.spring {
                 kept.remove(at: index)
             }
         }

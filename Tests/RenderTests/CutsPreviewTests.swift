@@ -123,7 +123,11 @@ struct CutsPreviewSpec {
         project.edits.cuts = try Cuts(validating: [CutsRenderSpec.cut(0.5, 1.5)], within: project.source.duration)
         preview.show(project)
         #expect(await tap.wait(.seconds(10)) { preview.item !== first } != nil, "the cut replaces the item")
-        let crossed = await tap.wait(.seconds(15)) { seen.ticks.last.map { $0.output >= .seconds(1.5) } ?? false }
+        // A tick that reads the cut map, a second of playback past the join: the uncut item's
+        // ticks can reach any output time on their own while the swap is still being built.
+        let crossed = await tap.wait(.seconds(15)) {
+            seen.ticks.last.map { $0.recording.microseconds == $0.output.microseconds + 1_000_000 && $0.output >= .seconds(1.5) } ?? false
+        }
         collector.cancel()
         preview.pause()
         let ticks = seen.ticks
