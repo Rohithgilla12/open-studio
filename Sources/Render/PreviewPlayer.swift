@@ -8,7 +8,8 @@ import Timeline
 ///
 /// The player is never rebuilt. The item is replaced when the cuts change, and only then. Every
 /// item is paired with the map it was built for (`movie.map`), and every conversion between the
-/// clocks uses that pair, so a tick from one item is never read with another item's map.
+/// clocks uses that pair and the current item's own time, so a tick from one item is never read
+/// with another item's map.
 @MainActor
 public final class PreviewPlayer {
     /// Hosts the picture. A layer rather than the `AVPlayer`, so callers cannot drive transport
@@ -32,8 +33,15 @@ public final class PreviewPlayer {
     private var shown = Shown.edited
     private var pending: (project: Project, landing: RecordingTime?)?
     private var applyTask: Task<Void, Never>?
-    private var seekInFlight = false
-    private var seekTarget: OutputTime?
+    /// The target of the seek the current item is performing, and the latest target requested
+    /// while it was, issued when it lands.
+    private var inFlight: OutputTime?
+    private var queued: OutputTime?
+
+    /// Where the current item is, or is heading. A seek's target counts from the moment it is
+    /// requested, so an edit or a tick during a landing never reads the new item's unseeked 0, and
+    /// a tick the replaced item queued is never read with the new map.
+    private var now: OutputTime { queued ?? inFlight ?? OutputTime(compositionTime: item.currentTime()) }
 
     /// Which item is up. `source` is the uncut take, shown only during a trim or cut-edge drag so
     /// each step is a seek instead of an item swap; `show` always returns to `edited`.
@@ -93,28 +101,35 @@ public final class PreviewPlayer {
     }
 
     private func apply(_ next: Project, landing: RecordingTime?) async {
-        let mapChanged = shown == .source || next.timeline.map != movie.map
         let audioChanged = next.edits.audio != project.edits.audio
         let pictureChanged = Self.picture(of: next.edits) != Self.picture(of: project.edits)
         project = next
-        guard mapChanged || pictureChanged || audioChanged else { return }
-        if !mapChanged, !pictureChanged {
+        guard needsItem(for: next) || pictureChanged || audioChanged else { return }
+        if !needsItem(for: next), !pictureChanged {
             item.audioMix = movie.audioMix(next.edits.audio)
             return
         }
         guard let scene = await build(next) else { return }
         self.scene = scene
-        guard mapChanged else {
-            // Measured (rationale, open question 1): a paused item composes its current frame again
-            // on its own within 300 ms of the swap, so no seek is needed to show the edit.
+        // Decided again after the build: a drag that began meanwhile swapped in the uncut item.
+        guard needsItem(for: next) else {
+            // Measured (accepted-render rationale, open question 1): a paused item composes its
+            // current frame again on its own within 300 ms of the swap, so no seek is needed to
+            // show the edit.
             item.videoComposition = movie.videoComposition(scene: scene, frameRate: next.edits.format.frameRate)
             if audioChanged { item.audioMix = movie.audioMix(next.edits.audio) }
             return
         }
         let edited = MovieComposition(media: media, map: next.timeline.map)
-        let under = landing ?? movie.map.recording(at: OutputTime(compositionTime: player.currentTime()))
+        let under = landing ?? movie.map.recording(at: now)
         replace(with: edited, scene: scene, landingAt: edited.map.output(collapsing: under))
         shown = .edited
+    }
+
+    /// Whether showing `next` takes a new item: its cuts differ from the current item's, or the
+    /// uncut item is up.
+    private func needsItem(for next: Project) -> Bool {
+        shown == .source || next.timeline.map != movie.map
     }
 
     /// A style change re-renders and dithers the backdrop (about 8 million pixels at 4K), so the
@@ -142,8 +157,8 @@ public final class PreviewPlayer {
         self.movie = movie
         item = next
         player.replaceCurrentItem(with: next)
-        seekTarget = target
-        seekInFlight = false
+        inFlight = nil
+        queued = target
         issuePendingSeek()
         if rate != 0 { player.rate = rate }
     }
@@ -180,39 +195,38 @@ public final class PreviewPlayer {
     /// the playhead never queues a backlog of seeks. `t` is a strip position; inside a cut it
     /// lands on the join.
     public func scrub(to t: RecordingTime) {
-        seekTarget = movie.map.output(collapsing: t)
-        guard !seekInFlight else { return }
-        issuePendingSeek()
+        queued = movie.map.output(collapsing: t)
+        if inFlight == nil { issuePendingSeek() }
     }
 
     private func issuePendingSeek() {
-        guard let target = seekTarget else { return }
-        seekTarget = nil
-        seekInFlight = true
+        guard let target = queued else { return }
+        queued = nil
+        inFlight = target
         let item = item
         item.seek(to: target.compositionTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 // A seek on an item that was replaced meanwhile reports back too; the new item's
-                // own seek owns the flag.
+                // own seek owns `inFlight`.
                 guard item === self.item else { return }
-                seekInFlight = false
+                inFlight = nil
                 issuePendingSeek()
             }
         }
     }
 
     /// Playhead updates for the transport and the strip, at display rate while playing, in both
-    /// clocks. Each tick is converted with the map of the item it came from; a tick from an item
-    /// that was just replaced is dropped.
+    /// clocks. Each tick reads `now` from the current item, not the time the observer delivered,
+    /// and converts it with that item's map.
     public func playhead() -> AsyncStream<Playhead> {
         AsyncStream { continuation in
             let observer = Observer(token: player.addPeriodicTimeObserver(
                 forInterval: CMTime(value: 1, timescale: 60), queue: .main
-            ) { [weak self] time in
+            ) { [weak self] _ in
                 MainActor.assumeIsolated {
                     guard let self, self.player.currentItem === self.item else { return }
-                    let output = OutputTime(compositionTime: time)
+                    let output = self.now
                     continuation.yield(Playhead(output: output, recording: self.movie.map.recording(at: output)))
                 }
             })

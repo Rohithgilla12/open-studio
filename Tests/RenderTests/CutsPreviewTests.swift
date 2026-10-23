@@ -73,32 +73,101 @@ struct CutsPreviewSpec {
         #expect(await shows(back, frame: 15, at: 0.5, in: preview), "recording 1.2 s is inside the cut, so it lands on the join")
     }
 
-    /// Catches a tick converted with the wrong map: every playhead carries the recording instant
-    /// its output time shows, and none lies inside the cut.
-    @Test func playheadTicksCarryBothClocks() async throws {
+    /// Catches a style edit that decided "same map" before its scene build and found the uncut
+    /// item up after it: a trim drag that starts during the build must not trap, and the next
+    /// `show` leaves the edited item up, landed on the join.
+    @Test func aSourceScrubDuringAStyleEditsBuildDoesNotTrap() async throws {
         let take = try await CutsRenderSpec.codedTake()
         defer { try? FileManager.default.removeItem(at: take) }
-        let project = try CutsRenderSpec.project(take, cuts: [CutsRenderSpec.cut(0.5, 1.5)])
+        var project = try CutsRenderSpec.project(take, cuts: [CutsRenderSpec.cut(0.5, 1.5)])
         let preview = try await PreviewPlayer(project: project)
-        let tap = Tap(preview.item)
-        try await tap.ready(preview.item)
+        let edited = preview.item
+        try await Tap(edited).ready(edited)
+
+        project.edits.style.background = .solid(RGBColor(red: 0, green: 1, blue: 0))
+        preview.show(project)
+        // Lets the edit run as far as its detached scene build before the drag begins.
+        await Task.yield()
+        preview.showSource(at: .seconds(1))
+        let source = preview.item
+        #expect(source !== edited)
+        preview.show(project)
+        // The build that was in flight lands first and swaps the uncut item out itself; either
+        // way an edited item ends up here.
+        #expect(await Tap(edited).wait(.seconds(10)) { preview.item !== source } != nil, "show returns to an edited item")
+        let back = Tap(preview.item)
+        try await back.ready(preview.item)
+        #expect(await shows(back, frame: 15, at: 0.5, in: preview), "recording 1 s is inside the cut, so it lands on the join")
+        #expect(preview.lastError == nil)
+    }
+
+    /// Catches a tick from the replaced item read with the new map, and the new item's first
+    /// tick at 0 before its landing seek: a cut applied during playback keeps every tick on the
+    /// map of the item that produced it. The expectation is the cut's own arithmetic (output
+    /// before 0.5 s is the recording; after it, the recording less the removed second), not the
+    /// map the player converts with.
+    @Test func ticksAcrossACutAppliedDuringPlaybackNeverFlashToTheStart() async throws {
+        let take = try await CutsRenderSpec.codedTake()
+        defer { try? FileManager.default.removeItem(at: take) }
+        var project = try CutsRenderSpec.project(take, cuts: [])
+        let preview = try await PreviewPlayer(project: project)
+        let first = preview.item
+        let tap = Tap(first)
+        try await tap.ready(first)
         let seen = Seen()
         let collector = Task { @MainActor in
             for await playhead in preview.playhead() { seen.append(playhead) }
         }
         preview.play()
-        let reachedEnd = await tap.wait(.seconds(15)) { seen.ticks.last.map { $0.output >= .seconds(2) } ?? false }
+        #expect(await tap.wait(.seconds(15)) { seen.ticks.last.map { $0.output >= .seconds(0.9) } ?? false } != nil)
+        project.edits.cuts = try Cuts(validating: [CutsRenderSpec.cut(0.5, 1.5)], within: project.source.duration)
+        preview.show(project)
+        #expect(await tap.wait(.seconds(10)) { preview.item !== first } != nil, "the cut replaces the item")
+        let crossed = await tap.wait(.seconds(15)) { seen.ticks.last.map { $0.output >= .seconds(1.5) } ?? false }
         collector.cancel()
         preview.pause()
         let ticks = seen.ticks
-        #expect(reachedEnd != nil, "\(ticks.map(\.output.seconds))")
-        #expect(ticks.count >= 2)
-        let map = project.timeline.map
-        for tick in ticks {
-            #expect(tick.recording == map.recording(at: tick.output))
-            #expect(!(RecordingTime.seconds(0.5)..<RecordingTime.seconds(1.5)).contains(tick.recording), "\(tick)")
+        #expect(crossed != nil, "\(ticks.map(\.output.seconds))")
+
+        var split = 0
+        while split < ticks.count, ticks[split].recording.microseconds == ticks[split].output.microseconds,
+            split == 0 || ticks[split].output >= ticks[split - 1].output
+        {
+            split += 1
         }
-        #expect(ticks.contains { $0.recording >= .seconds(1.5) }, "playback crossed the cut")
+        #expect(split > 0 && ticks[split - 1].output >= .seconds(0.9), "ticks before the swap read the uncut take")
+        #expect(split < ticks.count, "ticks after the swap")
+        for tick in ticks[split...] {
+            #expect(tick.output >= .seconds(0.5), "a tick at the new item's start before it landed on the join: \(tick)")
+            let removed: Int64 = tick.output.microseconds < 500_000 ? 0 : 1_000_000
+            #expect(tick.recording.microseconds == tick.output.microseconds + removed, "\(tick)")
+        }
+    }
+
+    /// Catches an edit reading the player's time while the previous swap's landing seek is still
+    /// in flight: an undo right after a cut lands where the cut had landed, not at 0.
+    @Test func anEditDuringTheLandingSeekLandsWhereTheLastEditWasHeading() async throws {
+        let take = try await CutsRenderSpec.codedTake()
+        defer { try? FileManager.default.removeItem(at: take) }
+        let uncut = try CutsRenderSpec.project(take, cuts: [])
+        var cut = uncut
+        cut.edits.cuts = try Cuts(validating: [CutsRenderSpec.cut(0.5, 1.5)], within: uncut.source.duration)
+        let preview = try await PreviewPlayer(project: uncut)
+        let first = preview.item
+        let tap = Tap(first)
+        try await tap.ready(first)
+        preview.scrub(to: .seconds(1))
+        #expect(await shows(tap, frame: 10, at: 1, in: preview))
+
+        preview.show(cut)
+        #expect(await tap.wait(.seconds(10)) { preview.item !== first } != nil)
+        let second = preview.item
+        // Inside the landing seek, which the measured first replacement gives 230 ms.
+        preview.show(uncut)
+        #expect(await tap.wait(.seconds(10)) { preview.item !== second } != nil, "the undo replaces the item again")
+        let back = Tap(preview.item)
+        try await back.ready(preview.item)
+        #expect(await shows(back, frame: 15, at: 1.5, in: preview), "the cut landed on the join, recording 1.5 s; the undo stays there")
     }
 
     final class Seen: Sendable {
