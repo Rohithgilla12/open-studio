@@ -84,7 +84,7 @@ struct Retiming: Sendable {
     ///   to its last, and that one is dropped when it repeats the change already in effect, so a
     ///   zoom wholly inside a cut leaves no knot at all and `rescaleShortIntervals` sees the same
     ///   neighbours as if the zoom had been deleted. It is also dropped when the next kept change
-    ///   puts the target back before its spring would have settled.
+    ///   puts the target back before its spring would have settled, unless `snapsAtJoins`.
     /// - A change inside the head trim folds into the initial value, so the output starts at rest
     ///   on the target in effect where the take now begins instead of springing in from wherever
     ///   the recording started.
@@ -131,9 +131,11 @@ struct Retiming: Sendable {
         // bounce the camera at a cut the user made to bring the two zooms together, so the
         // collapsed change goes when the kept one after it restores the target it replaced. The
         // restorer goes with it when it would then only restate the change in effect, because a
-        // restatement still ends the interval `rescaleShortIntervals` measures.
+        // restatement still ends the interval `rescaleShortIntervals` measures. Not with
+        // `snapsAtJoins`: the snap restores the collapsed target from the raw changes, so dropping
+        // the restorer would leave nothing to move the cursor off it.
         var index = 0
-        while index + 1 < kept.count {
+        while !snapsAtJoins, index + 1 < kept.count {
             let change = kept[index]
             let previous = index == 0 ? nil : kept[index - 1]
             let restorer = kept[index + 1]

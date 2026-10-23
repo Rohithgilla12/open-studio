@@ -195,6 +195,19 @@ extension TimelineCutSpec {
         #expect(across.centerSpeed <= unsqueezed.centerSpeed * 1.25, "\(name): centre speed \(across.centerSpeed) against the unsqueezed spring's \(unsqueezed.centerSpeed)")
     }
 
+    /// Catches the camera's collapsed-change drop running for the cursor: the pointer moved inside
+    /// the cut and came back 100 ms after it, so the join snaps to where the recording shows it and
+    /// the cursor then returns, rather than the snap pinning it on a target nothing undoes. The
+    /// pointer rests at 5.5 s so the shake filter keeps the move as real.
+    @Test func aCursorMoveUndoneJustAfterAJoinStillReturns() throws {
+        let pointer: [(Double, Double, Double)] = [(0, 300, 200), (5, 900, 700), (5.5, 900, 700), (6.1, 300, 200)]
+        let source = try Synthetic.source(duration: 12, frame: Self.frame, pointer: pointer)
+        let timeline = try Self.timeline(source, zooms: [], cuts: [Cut(range: range(4, 6))])
+        #expect(timeline.frame(at: .seconds(4)).cursor.position == Point(x: 900, y: 700), "the pointer at recording 6 s")
+        let later = timeline.frame(at: .seconds(6)).cursor.position
+        #expect(abs(later.x - 300) < 1 && abs(later.y - 200) < 1, "back where the recording put it at 6.1 s: \(later)")
+    }
+
     /// Catches `Retiming` touching a change when there is nothing to retime, independently of the
     /// compiler the hash above was pinned on: with no cuts the camera and cursor builders' changes
     /// come back exactly as they went in.
