@@ -16,6 +16,7 @@ struct ExportCommand: AsyncParsableCommand {
     @Argument(help: "The .osrec directory.") var take: String
     @Option(help: "Output MP4 path. Required unless --still is given.") var out: String?
     @Option(help: "hd1080, uhd2160, or native. Default: the project's format.") var size: CanvasPreset?
+    @Option(help: "fit, 16:9, 9:16, 1:1, 4:3, or 4:5. Native ignores it. Default: the project's format.") var aspect: CanvasAspect?
     @Option(help: "30 or 60. Default: the project's format.") var fps: Int?
     @Option(help: "hevc or h264. Default: the project's format.") var codec: Codec?
     @Flag(help: "Ignore project.json and use automatic zooms with default settings and style.") var autoZooms = false
@@ -44,6 +45,7 @@ struct ExportCommand: AsyncParsableCommand {
             throw ExitCode(2)
         }
         if let size { project.edits.format.size = size }
+        if let aspect { project.edits.format.aspect = aspect }
         if let fps { project.edits.format.frameRate = FrameRate(rawValue: fps)! }
         if let codec { project.edits.format.codec = codec }
         if noCamera { project.edits.style.camera.isVisible = false }
@@ -107,4 +109,5 @@ struct ExportCommand: AsyncParsableCommand {
 }
 
 extension CanvasPreset: ExpressibleByArgument {}
+extension CanvasAspect: ExpressibleByArgument {}
 extension Codec: ExpressibleByArgument {}
