@@ -318,20 +318,22 @@ struct EditSlider: View {
 struct BackgroundSwatches: View {
     let editor: Editor
 
-    static let presets: [Background] = Render.Gradient.presets.map(Background.gradient) + [
-        .solid(RGBColor(red: 0.11, green: 0.12, blue: 0.14)),
-        .solid(RGBColor(red: 0.93, green: 0.93, blue: 0.91)),
-        .solid(RGBColor(red: 0.20, green: 0.45, blue: 0.85)),
-    ]
+    /// The built-in presets, then the project's own image while it is the background, so the
+    /// selection always shows.
+    private var choices: [BackgroundPreset] {
+        let current = editor.project.edits.style.background
+        guard case .image(let asset) = current else { return Background.presets }
+        return Background.presets + [BackgroundPreset(asset.fileName, current)]
+    }
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.fixed(40), spacing: 10), count: 5), alignment: .leading, spacing: 10) {
-            ForEach(Self.presets, id: \.self) { background in
-                let selected = editor.project.edits.style.background == background
+            ForEach(choices) { preset in
+                let selected = editor.project.edits.style.background == preset.background
                 Button {
-                    editor.apply("Change Background") { $0.style.background = background }
+                    editor.apply("Change Background") { $0.style.background = preset.background }
                 } label: {
-                    Swatch(background: background)
+                    Swatch(background: preset.background)
                         .frame(width: 40, height: 28)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         .overlay(
@@ -339,7 +341,9 @@ struct BackgroundSwatches: View {
                                 .strokeBorder(selected ? Color.accentColor : Color.primary.opacity(0.15), lineWidth: selected ? 2.5 : 1))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(background.name))
+                .help(preset.name)
+                .accessibilityLabel(Text(preset.name))
+                .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
         .padding(.vertical, 4)
@@ -367,22 +371,6 @@ struct Swatch: View {
 
 extension Render.RGBColor {
     var swiftUI: Color { Color(.sRGB, red: red, green: green, blue: blue) }
-}
-
-extension Background {
-    var name: String {
-        switch self {
-        case .gradient(let gradient):
-            switch gradient {
-            case .dusk: "Dusk gradient"
-            case .mint: "Mint gradient"
-            case .ember: "Ember gradient"
-            default: "Gradient"
-            }
-        case .solid: "Solid colour"
-        case .image(let asset): asset.fileName
-        }
-    }
 }
 
 struct FormatPicker: View {

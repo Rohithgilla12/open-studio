@@ -108,6 +108,69 @@ public enum Background: Sendable, Hashable {
     case image(ProjectAsset)
 }
 
+/// A built-in background the inspector offers. Picking one stores its `background` value, never
+/// the name, so retuning a preset later does not recolour a saved project.
+public struct BackgroundPreset: Sendable, Hashable, Identifiable {
+    public let name: String
+    public let background: Background
+
+    public var id: String { name }
+
+    public init(_ name: String, _ background: Background) {
+        self.name = name
+        self.background = background
+    }
+}
+
+extension Background {
+    public static let presets: [BackgroundPreset] = [
+        BackgroundPreset("Dusk", .gradient(.dusk)),
+        BackgroundPreset("Mint", .gradient(.mint)),
+        BackgroundPreset("Ember", .gradient(.ember)),
+        BackgroundPreset("Ocean", .gradient(Gradient(
+            from: RGBColor(red: 0.04, green: 0.22, blue: 0.50), to: RGBColor(red: 0.22, green: 0.70, blue: 0.85), angle: 120))),
+        BackgroundPreset("Peach", .gradient(Gradient(
+            from: RGBColor(red: 0.98, green: 0.72, blue: 0.55), to: RGBColor(red: 0.88, green: 0.40, blue: 0.55), angle: 45))),
+        BackgroundPreset("Lavender", .gradient(Gradient(
+            from: RGBColor(red: 0.50, green: 0.47, blue: 0.88), to: RGBColor(red: 0.86, green: 0.72, blue: 0.95), angle: 90))),
+        BackgroundPreset("Forest", .gradient(Gradient(
+            from: RGBColor(red: 0.05, green: 0.20, blue: 0.15), to: RGBColor(red: 0.32, green: 0.52, blue: 0.32), angle: 60))),
+        BackgroundPreset("Dawn", .gradient(Gradient(
+            from: RGBColor(red: 0.98, green: 0.84, blue: 0.62), to: RGBColor(red: 0.58, green: 0.78, blue: 0.95), angle: 90))),
+        BackgroundPreset("Rose", .gradient(Gradient(
+            from: RGBColor(red: 0.95, green: 0.55, blue: 0.65), to: RGBColor(red: 0.55, green: 0.22, blue: 0.52), angle: 135))),
+        BackgroundPreset("Midnight", .gradient(Gradient(
+            from: RGBColor(red: 0.04, green: 0.05, blue: 0.10), to: RGBColor(red: 0.20, green: 0.22, blue: 0.36), angle: 90))),
+        BackgroundPreset("Graphite", .solid(RGBColor(red: 0.11, green: 0.12, blue: 0.14))),
+        BackgroundPreset("Paper", .solid(RGBColor(red: 0.93, green: 0.93, blue: 0.91))),
+        BackgroundPreset("Cobalt", .solid(RGBColor(red: 0.20, green: 0.45, blue: 0.85))),
+        BackgroundPreset("Sand", .solid(RGBColor(red: 0.86, green: 0.80, blue: 0.70))),
+        BackgroundPreset("Moss", .solid(RGBColor(red: 0.22, green: 0.33, blue: 0.25))),
+    ]
+
+    /// Why the background cannot be rendered as stored, or nil.
+    var problem: String? {
+        switch self {
+        case .solid(let color):
+            return color.problem
+        case .gradient(let gradient):
+            if !gradient.angle.isFinite { return "gradient angle is not finite" }
+            return gradient.from.problem ?? gradient.to.problem
+        case .image(let asset):
+            if asset.fileName.isEmpty || asset.fileName.contains("/") { return "image name \(asset.fileName) is not a file name" }
+            return nil
+        }
+    }
+}
+
+extension RGBColor {
+    var problem: String? {
+        let components = [red, green, blue]
+        guard components.allSatisfy({ $0 >= 0 && $0 <= 1 }) else { return "colour \(components) is not in [0, 1]" }
+        return nil
+    }
+}
+
 /// sRGB components, 0...1. The renderer converts into its working space; nothing else interprets
 /// these numbers.
 public struct RGBColor: Sendable, Hashable, Codable {
@@ -142,8 +205,6 @@ public struct Gradient: Sendable, Hashable, Codable {
         from: RGBColor(red: 0.10, green: 0.45, blue: 0.40), to: RGBColor(red: 0.70, green: 0.90, blue: 0.70), angle: 120)
     public static let ember = Gradient(
         from: RGBColor(red: 0.55, green: 0.12, blue: 0.10), to: RGBColor(red: 0.95, green: 0.60, blue: 0.25), angle: 60)
-    /// The presets the style inspector offers.
-    public static let presets: [Gradient] = [.dusk, .mint, .ember]
 }
 
 public struct Shadow: Sendable, Hashable, Codable {
