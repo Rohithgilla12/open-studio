@@ -129,6 +129,14 @@ public struct CursorSettings: Sendable, Hashable, Codable {
     /// nil disables idle hiding.
     public var idleHideAfter: RecordingTime? = nil
     public static let observedIdleHide = RecordingTime.milliseconds(2000)
+    /// A scale on the redrawn cursor, on top of the camera's zoom and the press shrink.
+    public var size: Double = 1
+    public static let sizeRange: ClosedRange<Double> = 0.5...3
+    /// Never draw the cursor. Click rings still show when `showsClicks` is on.
+    public var isHidden = false
+    /// A ring that grows and fades where each button went down.
+    public var showsClicks = false
+    public static let clickDuration = RecordingTime.milliseconds(450)
 
     public init() {}
 
@@ -145,6 +153,9 @@ public struct CursorSettings: Sendable, Hashable, Codable {
         try c.decodeIfPresent(RecordingTime.self, forKey: .typingWindow).map { typingWindow = $0 }
         try c.decodeIfPresent(RecordingTime.self, forKey: .fadeDuration).map { fadeDuration = $0 }
         if c.contains(.idleHideAfter) { idleHideAfter = try c.decodeIfPresent(RecordingTime.self, forKey: .idleHideAfter) }
+        try c.decodeIfPresent(Double.self, forKey: .size).map { size = $0 }
+        try c.decodeIfPresent(Bool.self, forKey: .isHidden).map { isHidden = $0 }
+        try c.decodeIfPresent(Bool.self, forKey: .showsClicks).map { showsClicks = $0 }
     }
 }
 

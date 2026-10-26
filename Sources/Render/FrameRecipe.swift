@@ -26,6 +26,10 @@ enum FrameRecipe {
             ])
             .transformed(by: CGAffineTransform(translationX: contentRect.minX, y: contentRect.maxY - drawnHeight))
 
+        for ring in geometry.clicks {
+            content = Self.ring(ring, canvasHeight: canvasHeight).composited(over: content)
+        }
+
         if let cursor = geometry.cursor {
             let image = cursor.image.flatMap { assets.cursors[$0] } ?? assets.fallbackCursor
             let rect = flipped(cursor.rect, canvasHeight: canvasHeight)
@@ -73,6 +77,36 @@ enum FrameRecipe {
             .applyingFilter("CIBlendWithMask", parameters: [
                 kCIInputBackgroundImageKey: CIImage.empty(), kCIInputMaskImageKey: mask,
             ])
+    }
+
+    /// A white ring with a soft dark edge under it, so it reads on light and dark screens alike.
+    private static func ring(_ ring: ClickRing, canvasHeight: Int) -> CIImage {
+        let center = CIVector(x: ring.center.x, y: Double(canvasHeight) - ring.center.y)
+        let edge = annulus(
+            center: center, radius: ring.radius, width: ring.lineWidth * 1.8,
+            color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.35 * ring.opacity))
+        let light = annulus(
+            center: center, radius: ring.radius, width: ring.lineWidth,
+            color: CIColor(red: 1, green: 1, blue: 1, alpha: ring.opacity))
+        return light.composited(over: edge)
+    }
+
+    /// A ring as a disc with a hole: one radial step for the outer edge, kept only where a second
+    /// step says it is outside the inner edge. Each step is a pixel wide, which antialiases it.
+    private static func annulus(center: CIVector, radius: Double, width: Double, color: CIColor) -> CIImage {
+        let outer = radius + width / 2, inner = max(radius - width / 2, 0)
+        let clear = CIColor(red: 0, green: 0, blue: 0, alpha: 0)
+        let disc = CIFilter(name: "CIRadialGradient", parameters: [
+            "inputCenter": center, "inputRadius0": outer - 0.5, "inputRadius1": outer + 0.5,
+            "inputColor0": color, "inputColor1": clear,
+        ])!.outputImage!
+        let outside = CIFilter(name: "CIRadialGradient", parameters: [
+            "inputCenter": center, "inputRadius0": max(inner - 0.5, 0), "inputRadius1": inner + 0.5,
+            "inputColor0": clear, "inputColor1": CIColor.white,
+        ])!.outputImage!
+        let bounds = CGRect(x: center.x - outer - 1, y: center.y - outer - 1, width: 2 * outer + 2, height: 2 * outer + 2)
+        return disc.applyingFilter("CISourceInCompositing", parameters: [kCIInputBackgroundImageKey: outside])
+            .cropped(to: bounds)
     }
 
     /// Top-left rect to Core Image's bottom-left space.

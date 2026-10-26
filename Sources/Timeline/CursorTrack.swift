@@ -9,6 +9,9 @@ struct CursorTrack: Sendable {
     /// Sorted, disjoint intervals during which the cursor is hidden (typing or idle), in seconds.
     /// Intervals closer than the fade duration are merged so the cursor never blinks between them.
     let hidden: [Interval]
+    /// The downs that get a click ring, sorted: every button's, except one inside a cut, which the
+    /// viewer never sees. Empty when the effect is off.
+    let clickDowns: [ButtonEvent]
     let settings: CursorSettings
 
     struct Interval: Sendable, Equatable {
@@ -45,6 +48,9 @@ struct CursorTrack: Sendable {
         }
 
         presses = Self.pressIntervals(source.buttons, end: source.duration)
+        clickDowns = settings.showsClicks
+            ? source.buttons.filter { $0.edge == .down && retiming.cuts.cut(containing: $0.time) == nil }
+            : []
 
         // Hides measure durations the viewer sees, so they run over output time; an instant inside
         // a cut is dropped, and a removed wait does not leave the cursor hidden after the join.
@@ -203,12 +209,29 @@ struct CursorTrack: Sendable {
         }
 
         let press = Self.pressAmount(at: recording, presses: presses, transition: settings.pressTransition.seconds)
-        let opacity = Self.opacity(at: output, hidden: hidden, fade: settings.fadeDuration.seconds)
+        let opacity = settings.isHidden ? 0 : Self.opacity(at: output, hidden: hidden, fade: settings.fadeDuration.seconds)
         let onDisplay = p.x >= 0 && p.x < frameSize.width && p.y >= 0 && p.y < frameSize.height
         return CursorState(
             position: p.point, velocity: v.velocity, image: image,
             isPressed: press.isPressed, pressAmount: press.amount,
             opacity: opacity, isVisible: opacity > 0 && onDisplay)
+    }
+
+    /// The rings alive at a recording instant, oldest first. A ring is press state, so it follows the
+    /// recording instant like `pressAmount`: a cut that begins while a ring grows cuts it too.
+    func clicks(at recording: RecordingTime) -> [ClickPulse] {
+        guard !clickDowns.isEmpty else { return [] }
+        let duration = CursorSettings.clickDuration.microseconds
+        var pulses: [ClickPulse] = []
+        var index = clickDowns.lastIndex(keyedBy: \.time.seconds, atOrBefore: recording.seconds)
+        while index >= 0 {
+            let down = clickDowns[index]
+            let age = recording.microseconds - down.time.microseconds
+            if age >= duration { break }
+            if age >= 0 { pulses.append(ClickPulse(position: down.position, progress: Double(age) / Double(duration))) }
+            index -= 1
+        }
+        return pulses.reversed()
     }
 
     static func pressAmount(at t: Double, presses: [Interval], transition: Double) -> (isPressed: Bool, amount: Double) {
@@ -231,6 +254,19 @@ struct CursorTrack: Sendable {
             return fade > 0 ? max(0, 1 - (t - interval.start) / fade) : 0
         }
         return fade > 0 ? min(1, (t - interval.end) / fade) : 1
+    }
+}
+
+/// One click ring on one frame.
+public struct ClickPulse: Sendable, Hashable {
+    /// Where the button went down, in source pixels.
+    public let position: Point
+    /// 0 at the press, approaching 1 as the ring fades out.
+    public let progress: Double
+
+    public init(position: Point, progress: Double) {
+        self.position = position
+        self.progress = progress
     }
 }
 

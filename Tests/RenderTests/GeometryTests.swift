@@ -8,6 +8,7 @@ import Timeline
 // Each test names the defect it catches. Everything here is pure: no GPU, no files.
 
 let source = Size(width: 3456, height: 2234)
+let look = CursorLook(settings: CursorSettings(), frame: source)
 
 func layout(padding: Double = 0.08, cornerRadius: Double = 0.012, shadow: Shadow = .soft, canvas: PixelSize = PixelSize(width: 1920, height: 1080))
     -> CanvasLayout
@@ -17,9 +18,10 @@ func layout(padding: Double = 0.08, cornerRadius: Double = 0.012, shadow: Shadow
         canvas: canvas, source: source)
 }
 
-func frame(viewport: Rect, cursor: Point = Point(x: 0, y: 0), image: CursorImageID? = nil, pressAmount: Double = 0, opacity: Double = 1, visible: Bool = true)
-    -> FrameState
-{
+func frame(
+    viewport: Rect, cursor: Point = Point(x: 0, y: 0), image: CursorImageID? = nil, pressAmount: Double = 0, opacity: Double = 1,
+    visible: Bool = true, clicks: [ClickPulse] = []
+) -> FrameState {
     FrameState(
         camera: CameraState(
             viewport: viewport, scale: source.width / viewport.size.width,
@@ -27,7 +29,8 @@ func frame(viewport: Rect, cursor: Point = Point(x: 0, y: 0), image: CursorImage
             centerVelocity: .zero, scaleVelocity: 0),
         cursor: CursorState(
             position: cursor, velocity: .zero, image: image, isPressed: pressAmount > 0, pressAmount: pressAmount,
-            opacity: opacity, isVisible: visible))
+            opacity: opacity, isVisible: visible),
+        clicks: clicks)
 }
 
 let fullFrame = Rect(origin: Point(x: 0, y: 0), size: source)
@@ -85,7 +88,7 @@ struct CanvasLayoutSpec {
 struct FrameGeometrySpec {
     @Test func unzoomedViewportMapsSourceCornersToContentCorners() {
         let l = layout()
-        let g = FrameGeometry(frame: frame(viewport: fullFrame), layout: l, cursorImage: nil, pressedScale: 0.9)
+        let g = FrameGeometry(frame: frame(viewport: fullFrame), layout: l, cursorImage: nil, look: look)
         #expect(g.canvasPoint(Point(x: 0, y: 0)) == l.content.origin)
         let max = g.canvasPoint(Point(x: source.width, y: source.height))
         #expect(max.x == l.content.maxX)
@@ -96,9 +99,9 @@ struct FrameGeometrySpec {
         // Catches: scale computed from camera.scale instead of the viewport width (they differ
         // once the viewport is clamped at an edge).
         let l = layout()
-        let whole = FrameGeometry(frame: frame(viewport: fullFrame), layout: l, cursorImage: nil, pressedScale: 0.9)
+        let whole = FrameGeometry(frame: frame(viewport: fullFrame), layout: l, cursorImage: nil, look: look)
         let half = Rect(origin: Point(x: 864, y: 558.5), size: Size(width: 1728, height: 1117))
-        let zoomed = FrameGeometry(frame: frame(viewport: half), layout: l, cursorImage: nil, pressedScale: 0.9)
+        let zoomed = FrameGeometry(frame: frame(viewport: half), layout: l, cursorImage: nil, look: look)
         #expect(zoomed.scale == 2 * whole.scale)
         let centre = Point(x: 1728, y: 1117)
         #expect(zoomed.canvasPoint(centre) == whole.canvasPoint(centre))
@@ -108,7 +111,7 @@ struct FrameGeometrySpec {
         state = FrameState(
             camera: CameraState(viewport: state.camera.viewport, scale: 1.9, center: state.camera.center, centerVelocity: .zero, scaleVelocity: 0),
             cursor: state.cursor)
-        #expect(FrameGeometry(frame: state, layout: l, cursorImage: nil, pressedScale: 0.9).scale == zoomed.scale)
+        #expect(FrameGeometry(frame: state, layout: l, cursorImage: nil, look: look).scale == zoomed.scale)
     }
 
     let arrow = CursorImageInfo(relativePath: "cursors/a.png", hotspot: Point(x: 10, y: 10), size: Size(width: 56, height: 80))
@@ -117,7 +120,7 @@ struct FrameGeometrySpec {
         // Catches: drawing the image's top-left at the pointer (the tip lands hotspot px off).
         let l = layout()
         let position = Point(x: 1000, y: 700)
-        let g = FrameGeometry(frame: frame(viewport: fullFrame, cursor: position, image: CursorImageID(rawValue: "a")), layout: l, cursorImage: arrow, pressedScale: 0.9)
+        let g = FrameGeometry(frame: frame(viewport: fullFrame, cursor: position, image: CursorImageID(rawValue: "a")), layout: l, cursorImage: arrow, look: look)
         let placement = try #require(g.cursor)
         let q = g.canvasPoint(position)
         let drawScale = placement.rect.size.width / 56
@@ -131,8 +134,8 @@ struct FrameGeometrySpec {
     @Test func pressShrinksAroundTheHotspot() throws {
         let l = layout()
         let position = Point(x: 1000, y: 700)
-        let rest = try #require(FrameGeometry(frame: frame(viewport: fullFrame, cursor: position), layout: l, cursorImage: arrow, pressedScale: 0.9).cursor)
-        let pressed = try #require(FrameGeometry(frame: frame(viewport: fullFrame, cursor: position, pressAmount: 1), layout: l, cursorImage: arrow, pressedScale: 0.9).cursor)
+        let rest = try #require(FrameGeometry(frame: frame(viewport: fullFrame, cursor: position), layout: l, cursorImage: arrow, look: look).cursor)
+        let pressed = try #require(FrameGeometry(frame: frame(viewport: fullFrame, cursor: position, pressAmount: 1), layout: l, cursorImage: arrow, look: look).cursor)
         #expect(abs(pressed.rect.size.width - 0.9 * rest.rect.size.width) < 1e-9)
         #expect(abs(pressed.rect.size.height - 0.9 * rest.rect.size.height) < 1e-9)
         let restTip = Point(x: rest.rect.origin.x + 10 * rest.rect.size.width / 56, y: rest.rect.origin.y + 10 * rest.rect.size.height / 80)
@@ -144,13 +147,13 @@ struct FrameGeometrySpec {
         // The placement only knows the declared 56 x 80; a 280 x 400 PNG is the recipe's problem.
         // Catches: a renderer that sizes by image extent, which would draw hi-res captures 5x too big.
         let l = layout(padding: 0, canvas: PixelSize(width: 3456, height: 2234))
-        let g = FrameGeometry(frame: frame(viewport: fullFrame, cursor: Point(x: 100, y: 100)), layout: l, cursorImage: arrow, pressedScale: 0.9)
+        let g = FrameGeometry(frame: frame(viewport: fullFrame, cursor: Point(x: 100, y: 100)), layout: l, cursorImage: arrow, look: look)
         #expect(try #require(g.cursor).rect.size == Size(width: 56, height: 80))
     }
 
     @Test func undeclaredCursorUsesTheFallbackArrowDeclaration() throws {
         let l = layout()
-        let g = FrameGeometry(frame: frame(viewport: fullFrame, cursor: Point(x: 100, y: 100), image: nil), layout: l, cursorImage: nil, pressedScale: 0.9)
+        let g = FrameGeometry(frame: frame(viewport: fullFrame, cursor: Point(x: 100, y: 100), image: nil), layout: l, cursorImage: nil, look: look)
         let placement = try #require(g.cursor)
         #expect(placement.image == nil)
         #expect(abs(placement.rect.size.width - FallbackArrow.size.width * g.scale) < 1e-9)
@@ -159,7 +162,7 @@ struct FrameGeometrySpec {
     @Test func invisibleCursorHasNoPlacement() {
         let l = layout()
         let hidden = frame(viewport: fullFrame, cursor: Point(x: 100, y: 100), opacity: 0, visible: false)
-        #expect(FrameGeometry(frame: hidden, layout: l, cursorImage: arrow, pressedScale: 0.9).cursor == nil)
+        #expect(FrameGeometry(frame: hidden, layout: l, cursorImage: arrow, look: look).cursor == nil)
     }
 
     @Test func flipMovesTheOriginToTheBottomLeft() {

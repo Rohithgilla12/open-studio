@@ -55,11 +55,20 @@ struct FrameGeometry: Sendable, Hashable {
     /// Canvas position of the viewport's origin, which is `layout.content.origin`.
     let contentOrigin: Point
     let cursor: CursorPlacement?
+    /// Oldest first, so the newest ring draws on top.
+    let clicks: [ClickRing]
 
-    init(frame: FrameState, layout: CanvasLayout, cursorImage: CursorImageInfo?, pressedScale: Double) {
-        viewport = frame.camera.viewport
-        scale = layout.content.size.width / frame.camera.viewport.size.width
-        contentOrigin = layout.content.origin
+    init(frame: FrameState, layout: CanvasLayout, cursorImage: CursorImageInfo?, look: CursorLook) {
+        let viewport = frame.camera.viewport
+        let scale = layout.content.size.width / viewport.size.width
+        let contentOrigin = layout.content.origin
+        self.viewport = viewport
+        self.scale = scale
+        self.contentOrigin = contentOrigin
+        func canvasPoint(_ p: Point) -> Point {
+            Self.canvasPoint(p, viewport: viewport, contentOrigin: contentOrigin, scale: scale)
+        }
+        clicks = frame.clicks.map { ClickRing($0, center: canvasPoint($0.position), largest: look.ringRadius * look.size * scale) }
         let cursor = frame.cursor
         guard cursor.isVisible else {
             self.cursor = nil
@@ -67,10 +76,8 @@ struct FrameGeometry: Sendable, Hashable {
         }
         let hotspot = cursorImage?.hotspot ?? FallbackArrow.hotspot
         let size = cursorImage?.size ?? FallbackArrow.size
-        let drawScale = scale * (1 - (1 - pressedScale) * cursor.pressAmount)
-        let q = Point(
-            x: contentOrigin.x + (cursor.position.x - viewport.origin.x) * scale,
-            y: contentOrigin.y + (cursor.position.y - viewport.origin.y) * scale)
+        let drawScale = scale * look.size * (1 - (1 - look.pressedScale) * cursor.pressAmount)
+        let q = canvasPoint(cursor.position)
         self.cursor = CursorPlacement(
             image: cursorImage == nil ? nil : cursor.image,
             rect: Rect(
@@ -81,8 +88,47 @@ struct FrameGeometry: Sendable, Hashable {
 
     /// Source pixel to canvas pixel: q = contentOrigin + (p - viewport.origin) * scale.
     func canvasPoint(_ p: Point) -> Point {
+        Self.canvasPoint(p, viewport: viewport, contentOrigin: contentOrigin, scale: scale)
+    }
+
+    private static func canvasPoint(_ p: Point, viewport: Rect, contentOrigin: Point, scale: Double) -> Point {
         Point(x: contentOrigin.x + (p.x - viewport.origin.x) * scale,
               y: contentOrigin.y + (p.y - viewport.origin.y) * scale)
+    }
+}
+
+/// What a scene knows about drawing the cursor and its click rings, from the cursor settings and
+/// the take.
+struct CursorLook: Sendable, Hashable {
+    let pressedScale: Double
+    let size: Double
+    /// The ring's largest radius at size 1, in source pixels. A fraction of the frame's height, so
+    /// it is about the same number of points on a 1x and a 2x display, where the cursor's
+    /// declared size would change with whichever image is showing.
+    let ringRadius: Double
+
+    init(settings: CursorSettings, frame: Size) {
+        pressedScale = settings.pressedScale
+        size = settings.size
+        ringRadius = 0.025 * frame.height
+    }
+}
+
+/// One click ring in canvas pixels. It grows quickly from a third of its size and fades as it
+/// grows, so it reads as a pulse from the click rather than a target drawn around it.
+struct ClickRing: Sendable, Hashable {
+    let center: Point
+    let radius: Double
+    let lineWidth: Double
+    let opacity: Double
+
+    init(_ pulse: ClickPulse, center: Point, largest: Double) {
+        let p = min(max(pulse.progress, 0), 1)
+        let eased = 1 - (1 - p) * (1 - p) * (1 - p)
+        self.center = center
+        radius = largest * (0.3 + 0.7 * eased)
+        lineWidth = largest * 0.16 * (1 - 0.5 * p)
+        opacity = 0.9 * (1 - p) * (1 - p)
     }
 }
 

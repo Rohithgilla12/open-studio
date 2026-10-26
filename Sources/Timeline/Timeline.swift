@@ -12,7 +12,9 @@
 ///   at `map.recording(at: o)`, but is solved over output time, so at a join its position and
 ///   velocity are continuous. The camera never jumps at a cut, and a zoom wholly inside a cut has
 ///   no effect on any kept frame. The cursor is the one exception: it snaps to rest at each join;
-/// - the typing and idle fades measure durations the viewer sees, so they run over output time.
+/// - the typing and idle fades measure durations the viewer sees, so they run over output time;
+/// - click rings are press state: a ring's age is measured at the recording instant, and a click
+///   inside a cut has none.
 ///
 /// Cost: construction is O(n) in pointer samples. Each query is a few binary searches plus a
 /// closed-form spring evaluation per track, independent of t and of the recording length.
@@ -44,7 +46,8 @@ public struct Timeline: Sendable {
         let recording = map.recording(at: t)
         return FrameState(
             camera: camera.state(at: t.seconds),
-            cursor: cursor.state(springAt: t.seconds, recordingAt: recording.seconds))
+            cursor: cursor.state(springAt: t.seconds, recordingAt: recording.seconds),
+            clicks: cursor.clicks(at: recording))
     }
 
     /// Knot counts per spring track, for diagnostics and the performance test.
@@ -61,11 +64,14 @@ public struct Timeline: Sendable {
 public struct FrameState: Sendable, Hashable {
     public let camera: CameraState
     public let cursor: CursorState
+    /// The click rings showing, oldest first. Empty unless `CursorSettings.showsClicks`.
+    public let clicks: [ClickPulse]
 
     /// For renderer tests that pin geometry to exact numbers without running a spring.
-    public init(camera: CameraState, cursor: CursorState) {
+    public init(camera: CameraState, cursor: CursorState, clicks: [ClickPulse] = []) {
         self.camera = camera
         self.cursor = cursor
+        self.clicks = clicks
     }
 }
 

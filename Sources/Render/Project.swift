@@ -241,6 +241,9 @@ struct ProjectFile: Codable {
         if let problem = file.style.problem {
             throw .projectUnreadable("\(fileName): style \(problem)")
         }
+        if !CursorSettings.sizeRange.contains(file.settings.cursor.size) {
+            throw .projectUnreadable("\(fileName): cursor size \(file.settings.cursor.size) is not in \(CursorSettings.sizeRange)")
+        }
         if let problem = file.audio?.problem {
             throw .projectUnreadable("\(fileName): audio \(problem)")
         }

@@ -13,7 +13,7 @@ import Timeline
 final class RenderScene: Sendable {
     let timeline: Timeline
     let layout: CanvasLayout
-    let pressedScale: Double
+    let cursorLook: CursorLook
     let assets: SceneAssets
     /// nil when the take has no camera or the overlay is hidden, so the compositor never asks
     /// for camera frames.
@@ -36,14 +36,15 @@ final class RenderScene: Sendable {
             assets = try SceneAssets.build(key, layout: layout, project: project)
         }
         return RenderScene(
-            timeline: project.timeline, layout: layout, pressedScale: project.edits.settings.cursor.pressedScale,
+            timeline: project.timeline, layout: layout,
+            cursorLook: CursorLook(settings: project.edits.settings.cursor, frame: project.source.frameSize),
             assets: assets, cameraOverlay: project.source.hasCamera && style.camera.isVisible ? style.camera : nil)
     }
 
-    private init(timeline: Timeline, layout: CanvasLayout, pressedScale: Double, assets: SceneAssets, cameraOverlay: CameraOverlay?) {
+    private init(timeline: Timeline, layout: CanvasLayout, cursorLook: CursorLook, assets: SceneAssets, cameraOverlay: CameraOverlay?) {
         self.timeline = timeline
         self.layout = layout
-        self.pressedScale = pressedScale
+        self.cursorLook = cursorLook
         self.assets = assets
         self.cameraOverlay = cameraOverlay
     }
@@ -56,7 +57,7 @@ final class RenderScene: Sendable {
     func image(source: CIImage, camera: CIImage? = nil, at t: OutputTime) -> CIImage {
         let frame = timeline.frame(at: t)
         let cursorInfo = frame.cursor.image.flatMap { timeline.source.cursorImages[$0] }
-        let geometry = FrameGeometry(frame: frame, layout: layout, cursorImage: cursorInfo, pressedScale: pressedScale)
+        let geometry = FrameGeometry(frame: frame, layout: layout, cursorImage: cursorInfo, look: cursorLook)
         var overlay: (image: CIImage, geometry: CameraOverlayGeometry)?
         if let camera, let cameraOverlay {
             let size = Size(width: camera.extent.width, height: camera.extent.height)
