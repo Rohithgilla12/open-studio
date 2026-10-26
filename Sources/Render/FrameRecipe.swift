@@ -83,8 +83,8 @@ enum FrameRecipe {
     private static func ring(_ ring: ClickRing, canvasHeight: Int) -> CIImage {
         let center = CIVector(x: ring.center.x, y: Double(canvasHeight) - ring.center.y)
         let edge = annulus(
-            center: center, radius: ring.radius, width: ring.lineWidth * 1.8,
-            color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.35 * ring.opacity))
+            center: center, radius: ring.radius, width: ring.lineWidth * 2,
+            color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.5 * ring.opacity))
         let light = annulus(
             center: center, radius: ring.radius, width: ring.lineWidth,
             color: CIColor(red: 1, green: 1, blue: 1, alpha: ring.opacity))

@@ -9,8 +9,8 @@ struct CursorTrack: Sendable {
     /// Sorted, disjoint intervals during which the cursor is hidden (typing or idle), in seconds.
     /// Intervals closer than the fade duration are merged so the cursor never blinks between them.
     let hidden: [Interval]
-    /// The downs that get a click ring, sorted: every button's, except one inside a cut, which the
-    /// viewer never sees. Empty when the effect is off.
+    /// The downs that get a click ring, sorted: every button's, except one inside a cut or outside
+    /// the area the take shows, which the viewer never sees. Empty when the effect is off.
     let clickDowns: [ButtonEvent]
     let settings: CursorSettings
 
@@ -49,7 +49,9 @@ struct CursorTrack: Sendable {
 
         presses = Self.pressIntervals(source.buttons, end: source.duration)
         clickDowns = settings.showsClicks
-            ? source.buttons.filter { $0.edge == .down && retiming.cuts.cut(containing: $0.time) == nil }
+            ? source.buttons.filter {
+                $0.edge == .down && source.visibleRect.contains($0.position) && retiming.cuts.cut(containing: $0.time) == nil
+            }
             : []
 
         // Hides measure durations the viewer sees, so they run over output time; an instant inside

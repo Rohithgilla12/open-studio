@@ -23,6 +23,9 @@ struct ExportCommand: AsyncParsableCommand {
     @Flag(help: "Leave the camera out, whatever project.json says.") var noCamera = false
     @Flag(help: "Leave the microphone out of the mix, whatever project.json says.") var muteMic = false
     @Flag(help: "Leave system audio out of the mix, whatever project.json says.") var muteSystem = false
+    @Option(help: "Scale the redrawn cursor, 0.5 to 3. Default: the project's setting.") var cursorSize: Double?
+    @Flag(help: "Leave the cursor out, whatever project.json says.") var hideCursor = false
+    @Flag(help: "Draw a ring at each click, whatever project.json says.") var showClicks = false
     @Option(
         name: .customLong("still"),
         help: "Write the frame at this many milliseconds into the exported movie (output time, after cuts) as <still-dir>/<take>-<ms>.png instead of a movie. Repeatable.")
@@ -33,6 +36,7 @@ struct ExportCommand: AsyncParsableCommand {
         if stills.isEmpty, out == nil { throw ValidationError("--out is required unless --still is given") }
         if !stills.isEmpty, out != nil { throw ValidationError("--still and --out are exclusive") }
         if let fps, FrameRate(rawValue: fps) == nil { throw ValidationError("--fps must be 30 or 60") }
+        if let cursorSize, !CursorSettings.sizeRange.contains(cursorSize) { throw ValidationError("--cursor-size must be in 0.5...3") }
     }
 
     func run() async throws {
@@ -51,6 +55,9 @@ struct ExportCommand: AsyncParsableCommand {
         if noCamera { project.edits.style.camera.isVisible = false }
         if muteMic { project.edits.audio.microphone.isMuted = true }
         if muteSystem { project.edits.audio.systemAudio.isMuted = true }
+        if let cursorSize { project.edits.settings.cursor.size = cursorSize }
+        if hideCursor { project.edits.settings.cursor.isHidden = true }
+        if showClicks { project.edits.settings.cursor.showsClicks = true }
         for warning in project.source.loadWarnings { print("load warning: \(warning)") }
         let camera = !project.source.hasCamera ? "no camera" : project.edits.style.camera.isVisible ? "camera shown" : "camera hidden"
         let audio = AudioSource.recorded(in: project.source).map { source in

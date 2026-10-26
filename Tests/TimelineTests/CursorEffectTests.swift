@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import RecordingFormat
 @testable import Timeline
 
 struct ClickEffectSpec {
@@ -61,6 +62,17 @@ struct ClickEffectSpec {
         let timeline = try Self.timeline(Self.source(), cuts: [Cut(range: Self.range(1.2, 2))])
         #expect(timeline.frame(at: .milliseconds(1190)).clicks.count == 1)
         #expect(timeline.frame(at: .milliseconds(1200)).clicks.isEmpty)
+    }
+
+    @Test func aClickOutsideTheAreaGetsNoRing() throws {
+        // The pointer is at (300, 200) for the click at 1 s and (900, 700) for the one at 3 s; only
+        // the second lies in the area.
+        let source = try Synthetic.source(
+            duration: 6, area: WireRect(x: 600, y: 300, width: 800, height: 600), pointer: [(0, 300, 200), (2, 900, 700)],
+            clicks: [1, 3])
+        let timeline = try Self.timeline(source)
+        #expect(timeline.frame(at: .seconds(1.1)).clicks.isEmpty)
+        #expect(timeline.frame(at: .seconds(3.1)).clicks.map(\.position) == [Self.second])
     }
 
     @Test func overlappingClicksShowOldestFirst() throws {
