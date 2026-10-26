@@ -171,6 +171,9 @@ struct StyleInspector: View {
                     get: { editor.project.edits.style.shadow.opacity > 0 },
                     set: { on in editor.apply("Change Shadow") { $0.style.shadow = on ? .soft : .none } }))
             }
+            Section("Cursor") {
+                CursorControls(editor: editor)
+            }
             if editor.project.source.hasCamera {
                 Section("Camera") {
                     CameraControls(editor: editor)
@@ -239,6 +242,26 @@ struct CameraControls: View {
         Binding(
             get: { overlay[keyPath: key] },
             set: { new in editor.apply(actionName) { $0.style.camera[keyPath: key] = new } })
+    }
+}
+
+struct CursorControls: View {
+    let editor: Editor
+
+    private var cursor: CursorSettings { editor.project.edits.settings.cursor }
+
+    var body: some View {
+        Toggle("Hide cursor", isOn: Binding(
+            get: { cursor.isHidden },
+            set: { hidden in editor.apply(hidden ? "Hide Cursor" : "Show Cursor") { $0.settings.cursor.isHidden = hidden } }))
+        EditSlider(
+            editor: editor, title: "Size", range: CursorSettings.sizeRange, actionName: "Resize Cursor",
+            value: \.settings.cursor.size)
+            .disabled(cursor.isHidden)
+        Toggle("Show clicks", isOn: Binding(
+            get: { cursor.showsClicks },
+            set: { on in editor.apply(on ? "Show Clicks" : "Hide Clicks") { $0.settings.cursor.showsClicks = on } }))
+            .help("Draw a ring that grows and fades at each click")
     }
 }
 
@@ -380,6 +403,13 @@ struct FormatPicker: View {
         Picker("Size", selection: binding(\.size, "Change Output Size")) {
             ForEach(CanvasPreset.allCases, id: \.self) { Text($0.label).tag($0) }
         }
+        Picker("Aspect", selection: binding(\.aspect, "Change Aspect Ratio")) {
+            ForEach(CanvasAspect.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        .disabled(editor.project.edits.format.size == .native)
+        .help(editor.project.edits.format.size == .native
+            ? "Native keeps the recording's shape, so each screen pixel stays one video pixel"
+            : "Fit keeps the recording's shape inside 16:9")
         Picker("Frame rate", selection: binding(\.frameRate, "Change Frame Rate")) {
             ForEach(FrameRate.allCases, id: \.self) { Text("\($0.rawValue) fps").tag($0) }
         }
@@ -407,6 +437,10 @@ extension CanvasPreset {
         case .native: "Native"
         }
     }
+}
+
+extension CanvasAspect {
+    var label: String { self == .fit ? "Fit" : rawValue }
 }
 
 extension Codec {
