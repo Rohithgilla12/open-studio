@@ -86,7 +86,7 @@ FrameState { camera, cursor, clicks: [ClickPulse] }
 Step 1. Timeline answers "which clicks are showing, and how far along".
 
 ```
-down events ── drop those inside a cut ──> kept downs (recording time, sorted)
+down events ── drop those inside a cut or outside the area ──> kept downs (recording time, sorted)
 frame(at: o):  r = map.recording(at: o)
                clicks = kept downs d with 0 <= r - d < clickDuration (450 ms)
                progress = (r - d) / clickDuration
@@ -123,3 +123,16 @@ A build from before this unit ignores the new keys. It exports a 16:9 or fitted 
 - **Ring clock on output time.** It keeps a ring animating smoothly across a join, but it would draw the tail of a click the viewer never saw, and the brief makes the press rule the contract.
 - **Ring computed in the renderer from the source's button events.** The renderer would need the cuts and the map to drop clicks inside cuts, a second copy of the time rule outside `Timeline`.
 - **A click-ring colour and size in the inspector.** Not asked for. The look is fixed in `FrameRecipe` until a user needs to change it.
+
+## Implementation reconciliation
+
+Where the code departs from the text above, and why.
+
+- **The ring's size is a fraction of the frame's height, not of the cursor.** Section 3 said a multiple of the drawn cursor's height. The cursor image can change in the 450 ms after a click (a link's pointing hand turns back into the arrow), and the ring would jump with it. `CursorLook.ringRadius` is 2.5% of the frame's height in source pixels, so it is 27 points on a 1080-point-tall display at either 1x or 2x. It still scales with the camera's zoom and with the cursor size.
+- **A click outside the take's area gets no ring**, the rule auto-zoom already applies (`visibleRect.contains`). A click just outside the area would otherwise show part of a ring at the content's edge.
+- **The ring is a white stroke over a wider black stroke at half opacity.** The white stroke disappears on a white page, so the black one carries it there. At 0.35 opacity it was faint in the first real-take still. Both strokes fade together.
+- **`RenderScene` holds a `CursorLook`** (press scale, size, ring radius) in place of the bare `pressedScale`, and `FrameGeometry` takes it. The geometry tests moved to it with a one-line codemod.
+- **`osrec export` gained `--aspect`, `--cursor-size`, `--hide-cursor`, and `--show-clicks`**, like `--no-camera`, so a still of each setting can be rendered from any take without writing a `project.json`.
+- **No image picker.** The brief lists "the existing custom image" beside the presets. The model has `Background.image`, but no view ever picked one, and copying a file into the take is a write the render design keeps to `project.json`. The swatch row shows the project's image when it is the background, so the selection is visible, and picking one stays a separate change.
+
+**Verified on 2026-10-26.** Stills from a real 12.9 s area take (1920 x 1170 area, camera on) at 3.4 s, 104 ms after a click, for `fit` (1772 x 1080), 16:9 (1920 x 1080), 9:16 (1080 x 1920), 1:1 (1080 x 1080), 4:3 (1440 x 1080), and 4:5 (1080 x 1350): each shows the screen fitted across the canvas with padding, corners, shadow, the zoom, and the camera in its corner. Click-ring stills at 34, 104, and 254 ms after the click show the ring growing and fading around the cursor tip, at cursor size 1.5. The same take exported whole at 2160 x 3840 HEVC (776 frames, 1.58x real time) and 2160 x 2700 H.264 (776 frames, 2.12x real time), one run each, so both hardware encoders accept the portrait 4K canvases.

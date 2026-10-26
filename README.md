@@ -60,8 +60,12 @@ Export a take to MP4, or a single frame to PNG:
 ```sh
 .build/release/osrec export <dir>.osrec --out demo.mp4                 # 1080p60 HEVC with automatic zooms
 .build/release/osrec export <dir>.osrec --out demo-4k.mp4 --size uhd2160
+.build/release/osrec export <dir>.osrec --out reel.mp4 --aspect 9:16      # 1080 x 1920
+.build/release/osrec export <dir>.osrec --out demo.mp4 --show-clicks --cursor-size 1.5   # or --hide-cursor
 .build/release/osrec export <dir>.osrec --still 4200                   # the frame 4.2 s into the exported movie
 ```
+
+`--aspect` takes `fit`, `16:9`, `9:16`, `1:1`, `4:3`, or `4:5`. The size sets the canvas's shorter side (1080 or 2160 pixels), and the aspect sets its shape. The recording sits inside with the same padding, background, corners, and shadow, and a zoom fills the same band. `fit` is the default: a 16:9 canvas, or for an area take the area's shape. `native` ignores the aspect, so each unzoomed screen pixel stays one video pixel.
 
 `export` uses `<dir>.osrec/project.json` when it exists, so it renders the app's edits, including trims and cuts. `--auto-zooms` ignores it. `--still` takes a time in the exported movie, so with cuts it is not the time in the recording; `inspect --timeline` prints the saved cuts, the kept spans with where each lands in the output, and the output duration.
 
@@ -110,6 +114,10 @@ To stop a recording early, press Ctrl-C. If the recorder was killed instead, run
 
 `osrec inspect --check-determinism` reads every frame forward, in reverse, shuffled, and from several threads at once. It exits non-zero if any answer differs.
 
+### Style the output
+
+The editor's inspector sets the look. Background offers fifteen built-in gradients and colours, generated in code. Frame sets the padding, corners, and shadow. Cursor sets the redrawn cursor's size (0.5x to 3x), hides it, or draws a ring that grows and fades at each click. A click inside a cut gets no ring. Output sets the size, aspect, frame rate, and codec. Each change is one undo step, and none of them touches the recording.
+
 ## Recording format
 
 A take is a `.osrec` directory:
@@ -142,7 +150,7 @@ docs/design/              brief, accepted design and rationale, rejected candida
 
 ## Design
 
-[`docs/design/accepted/rationale.md`](docs/design/accepted/rationale.md) explains the main decisions. [`docs/design/capture-targets/rationale.md`](docs/design/capture-targets/rationale.md) explains areas and windows, [`docs/design/camera/rationale.md`](docs/design/camera/rationale.md) explains the camera, [`docs/design/system-audio/rationale.md`](docs/design/system-audio/rationale.md) explains system audio and the mix, and [`docs/design/cuts/rationale.md`](docs/design/cuts/rationale.md) explains trims and cuts: one time map between the recording's clock and the output's, with the springs solved over output time. These include running capture in-process instead of in a helper, using fragmented `.mov` for crash safety, and solving springs exactly instead of replaying them. The same document records what the experiments measured.
+[`docs/design/accepted/rationale.md`](docs/design/accepted/rationale.md) explains the main decisions. [`docs/design/capture-targets/rationale.md`](docs/design/capture-targets/rationale.md) explains areas and windows, [`docs/design/camera/rationale.md`](docs/design/camera/rationale.md) explains the camera, [`docs/design/system-audio/rationale.md`](docs/design/system-audio/rationale.md) explains system audio and the mix, and [`docs/design/cuts/rationale.md`](docs/design/cuts/rationale.md) explains trims and cuts: one time map between the recording's clock and the output's, with the springs solved over output time. [`docs/design/editing-polish/rationale.md`](docs/design/editing-polish/rationale.md) explains aspects, background presets, and the cursor controls. These include running capture in-process instead of in a helper, using fragmented `.mov` for crash safety, and solving springs exactly instead of replaying them. The same document records what the experiments measured.
 
 ## Licence
 
