@@ -125,8 +125,14 @@ struct CameraPixelSpec {
     }
 
     @Test func aHiddenOverlayDrawsExactlyWhatATakeWithoutACameraDraws() async throws {
-        let take = try await cameraTake()
+        // Both takes share one encoded screen.mov. Two separate encodes of the same solid frame
+        // are not guaranteed identical: in the full suite the stills once differed by one code
+        // value in a narrow column of the content.
         let plainTake = try await Fixture.take(color: Self.red)
+        let take = FileManager.default.temporaryDirectory
+            .appending(path: "RenderTests-\(UUID().uuidString).osrec", directoryHint: .isDirectory)
+        try FileManager.default.copyItem(at: plainTake, to: take)
+        try await Fixture.addCamera(Self.camera, to: take)
         defer {
             try? FileManager.default.removeItem(at: take)
             try? FileManager.default.removeItem(at: plainTake)
